@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS2 Marketplace</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+        header {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(90deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        nav {
+            display: flex;
+            justify-content: space-around;
+            background: #1e293b;
+            padding: 12px 0;
+            margin: 15px 10px;
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        nav button {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 10px 16px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        nav button.active {
+            background: #3b82f6;
+            color: white;
+        }
+        section {
+            display: none;
+            padding: 20px;
+            animation: fadeIn 0.4s ease-in;
+        }
+        section.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .card {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+        .item {
+            display: flex;
+            align-items: center;
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .item img {
+            width: 80px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-right: 15px;
+        }
+        .item-info {
+            flex: 1;
+        }
+        .price {
+            color: #60a5fa;
+            font-weight: 700;
+            font-size: 18px;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin: 8px 0;
+            padding: 8px;
+            background: #1e293b;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>CS2 Marketplace</h1>
+    </header>
+
+    <nav>
+        <button class="active" onclick="switchTab('landing')">Лендинг</button>
+        <button onclick="switchTab('marketplace')">Маркетплейс</button>
+        <button onclick="switchTab('profile')">Профиль</button>
+    </nav>
+
+    <section id="landing" class="active">
+        <div class="card">
+            <h2>🎁 Получи бесплатный предмет!</h2>
+            <p>Пригласи <strong>3 друзей</strong> в бот — и получи рандомный скин CS2 бесплатно!</p>
+            <p>Твоя реферальная ссылка:</p>
+            <div class="card" style="word-break: break-all; background:#0f172a; padding:15px;">
+                <span id="ref-link"></span>
+            </div>
+            <button class="btn" onclick="shareLink()">Поделиться ссылкой</button>
+        </div>
+    </section>
+
+    <section id="marketplace">
+        <div class="card">
+            <h2>🛒 Доступные предметы</h2>
+            <div id="items-list"></div>
+        </div>
+    </section>
+
+    <section id="profile">
+        <div class="card">
+            <h2>👤 Твой профиль</h2>
+            <p>Приглашено друзей: <strong id="referrals">0</strong></p>
+            <p>Полученные предметы:</p>
+            <ul id="items"></ul>
+            <p>Steam профиль: <span id="steam-profile">Не привязан</span></p>
+            <p>Trade link: <span id="trade-link">Не привязан</span></p>
+
+            <h3 style="margin-top:30px;">Привязать Steam</h3>
+            <input id="profile-input" placeholder="Ссылка на Steam профиль">
+            <input id="trade-input" placeholder="Trade offer URL">
+            <button class="btn" onclick="bindSteam()">Привязать</button>
+        </div>
+    </section>
+
+    <script src="app.js"></script>
+</body>
+</html>
