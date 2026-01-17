@@ -1,4 +1,5 @@
 import json
+import aiohttp
 from aiogram import Dispatcher, types
 from aiogram.filters import Command
 from database import add_user, add_referral, update_steam, async_session, User, get_user
@@ -27,16 +28,26 @@ async def successful_payment_handler(message: types.Message):
     payload = json.loads(message.successful_payment.invoice_payload)
     item_id = payload['item_id']
     user_id = payload['user_id']
-    # Здесь интегрируй твой API для выдачи реального item
-    # Пример: await aiohttp.post('your_api/issue_item', data={'user': user_id, 'item': item_id})
-    async with async_session() as sess:
-        async with sess.begin():
-            user = await get_user(user_id, sess)
-            if user:
-                items = json.loads(user.items_received) if user.items_received else []
-                items.append({"name": f"Item {item_id}", "date": "2025-12-30"})  # Замени на реальный
-                user.items_received = json.dumps(items)
-    await message.answer("Оплата успешна! Предмет выдан.")
+
+    # Получаем trade_link пользователя из БД
+    user = await get_user(user_id)
+    if not user or not user.trade_link:
+        await message.answer("Ошибка: не привязан Trade link в профиле!")
+        return
+
+    # Создаём сделку через FastAPI эндпоинт
+    async with aiohttp.ClientSession() as session:
+        async with session.post("http://localhost:8000/api/create_deal", json={
+            "user_id": user_id,
+            "item_id": item_id,
+            "trade_link": user.trade_link
+        }) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                await message.answer(f"⭐ Оплата прошла! Скин отправлен в трейд.\n"
+                                     f"Проверьте Steam: https://steamcommunity.com/tradeoffer/{data.get('deal_id', 'new')}")
+            else:
+                await message.answer("Оплата прошла, но ошибка при отправке скина. Напишите в поддержку.")
 
 def register_handlers(dp: Dispatcher):
     dp.message.register(start_handler, Command(commands=['start']))

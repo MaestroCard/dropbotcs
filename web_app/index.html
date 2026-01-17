@@ -83,7 +83,7 @@
             font-weight: 600;
             cursor: pointer;
             width: 100%;
-            margin-top: 15px;
+            margin-top: 0px;
             transition: background 0.3s;
         }
         .btn:hover {
@@ -158,11 +158,15 @@
     </section>
 
     <section id="marketplace">
-        <div class="card">
-            <h2>🛒 Доступные предметы</h2>
-            <div id="items-list"></div>
+    <div class="card">
+        <h2>🛒 Доступные предметы</h2>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+            <input type="text" id="search-input" placeholder="Поиск по названию..." style="flex: 1; padding: 10px 12px; border-radius: 12px; background: #1e293b; border: 1px solid #334155; color: white; font-size: 16px;">
+            <button id="search-button" class="btn" style="width: 44px; height: 44px; padding: 0; font-size: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; min-width: unset;">🔍</button>
         </div>
-    </section>
+        <div id="items-list"></div>
+    </div>
+</section>
 
     <section id="profile">
         <div class="card">
@@ -176,7 +180,7 @@
             <h3 style="margin-top:30px;">Привязать Steam</h3>
             <input id="profile-input" placeholder="Ссылка на Steam профиль">
             <input id="trade-input" placeholder="Trade offer URL">
-            <button class="btn" onclick="bindSteam()">Привязать</button>
+            <button class="btn" onclick="bindSteam()" style="margin-top: 15px">Привязать</button>
         </div>
     </section>
 
