@@ -114,7 +114,7 @@
             font-size: 18px;
         }
         input {
-            width: 100%;
+            width: -webkit-fill-available;
             padding: 12px;
             margin: 10px 0;
             background: #0f172a;
@@ -131,6 +131,24 @@
             padding: 8px;
             background: #1e293b;
             border-radius: 8px;
+        }
+        .price-container {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            margin: 6px 0;
+        }
+
+        .price {
+            color: #60a5fa;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .price-usd {
+            color: #94a3b8;
+            font-size: 14px;
+            font-weight: 500;
         }
     </style>
 </head>
@@ -153,7 +171,7 @@
             <div class="card" style="word-break: break-all; background:#0f172a; padding:15px;">
                 <span id="ref-link"></span>
             </div>
-            <button class="btn" onclick="shareLink()">Поделиться ссылкой</button>
+            <button class="btn" onclick="shareLink()" style="width: 100%">Поделиться ссылкой</button>
         </div>
     </section>
 

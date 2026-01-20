@@ -1,3 +1,5 @@
+// app.js
+
 const webApp = window.Telegram.WebApp;
 webApp.ready();
 
@@ -10,15 +12,14 @@ fetch(location.href, {
 }).catch(() => {});
 
 const userId = webApp.initDataUnsafe.user?.id || 'unknown';
-const backendUrl = 'https://fleta-electrometallurgical-repercussively.ngrok-free.dev';  // ← Твой актуальный ngrok
+const backendUrl = 'https://fleta-electrometallurgical-repercussively.ngrok-free.dev';  // ← актуальный ngrok
 
-const botUsername = 'testmarket2912bot';
+const botUsername = 'bottest2314bot';
 
 let currentPage = 1;
 let hasMore = true;
 let isLoading = false;
-let searchQuery = '';  // Поисковая строка
-let allLoadedItems = [];  // Кэш загруженных предметов
+let searchQuery = '';
 
 // Переключение вкладок
 function switchTab(tabId) {
@@ -31,14 +32,11 @@ function switchTab(tabId) {
     if (activeBtn) activeBtn.classList.add('active');
 
     if (tabId === 'marketplace') {
-        if (allLoadedItems.length === 0) {
-            currentPage = 1;
-            hasMore = true;
-            fetchItems();
-        } else {
-            renderItems(allLoadedItems);
-            updateLoadMoreButton();
-        }
+        currentPage = 1;
+        hasMore = true;
+        searchQuery = '';
+        document.getElementById('search-input').value = '';
+        fetchItems();
     }
 }
 
@@ -59,6 +57,10 @@ async function loadProfile() {
             itemsList.appendChild(li);
         });
 
+        if (data.has_gift) {
+            document.getElementById('gift-section').innerHTML = '<button class="btn" onclick="claimGift()">Забрать подарок 🎁</button>';
+        }
+
         document.getElementById('steam-profile').innerText = data.steam_profile || 'Не привязан';
         document.getElementById('trade-link').innerText = data.trade_link || 'Не привязан';
     } catch (error) {
@@ -73,19 +75,29 @@ function generateRefLink() {
     if (refElement) refElement.innerText = refLink;
 }
 
+async function claimGift() {
+    // Можно отправить запрос на сервер, чтобы отметить подарок полученным
+    await fetch(`${backendUrl}/api/claim_gift/${userId}`, { method: 'POST' });
+    alert('Подарок получен! Проверьте профиль.');
+    loadProfile();  // Обновляем профиль
+}
+
 function shareLink() {
     const refText = document.getElementById('ref-link').innerText || '';
     if (refText) webApp.switchInlineQuery(`Пригласи друга в CS2 Marketplace и получи скин бесплатно! ${refText}`);
 }
 
-// Загрузка предметов (добавляет к существующим)
+// Загрузка предметов
 async function fetchItems() {
     if (isLoading || !hasMore) return;
     isLoading = true;
 
     try {
-        const url = `${backendUrl}/api/items?page=${currentPage}&limit=20`;
-        console.log(`[FETCH] Загружаем страницу ${currentPage}: ${url}`);
+        let url = `${backendUrl}/api/items?page=${currentPage}&limit=20`;
+        if (searchQuery.trim()) {
+            url += `&search=${encodeURIComponent(searchQuery)}`;
+        }
+        console.log(`[FETCH] Загружаем: ${url}`);
 
         const response = await fetch(url, {
             headers: {
@@ -97,61 +109,44 @@ async function fetchItems() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
-        console.log('[FETCH] Полученные данные:', data);
+        console.log('[FETCH] Данные:', data);
 
-        const newItems = data.items || [];
-        totalPages = data.pages || 1;
+        const list = document.getElementById('items-list');
+        if (currentPage === 1) list.innerHTML = '';
 
-        allLoadedItems = [...allLoadedItems, ...newItems];
+        if (!data.items || data.items.length === 0) {
+            list.innerHTML = '<p style="text-align:center; color:#94a3b8;">Ничего не найдено</p>';
+            hasMore = false;
+        } else {
+            data.items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'item';
+                div.innerHTML = `
+                    <img src="${item.image || 'https://via.placeholder.com/80x60?text=No+Image'}" alt="${item.name}">
+                    <div class="item-info">
+                        <strong>${item.name}</strong>
+                        <div class="price-container">
+                            <span class="price">${item.price_stars} ⭐</span>
+                            <span class="price-usd">≈ $${item.price_usd || '?'}</span>
+                        </div>
+                        <p>В наличии: ${item.quantity || 'много'}</p>
+                    </div>
+                    <button class="btn" style="width: 30%" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}')">Купить</button>
+                `;
+                list.appendChild(div);
+            });
 
-        renderItems(allLoadedItems);
-
-        hasMore = currentPage < totalPages;
-        currentPage++;
+            hasMore = currentPage < data.pages;
+            currentPage++;
+        }
 
         updateLoadMoreButton();
     } catch (error) {
-        console.error('[FETCH] Ошибка загрузки предметов:', error);
-        document.getElementById('items-list').innerHTML += '<p style="color:#ef4444;">Ошибка загрузки предметов</p>';
+        console.error('[FETCH] Ошибка:', error);
+        document.getElementById('items-list').innerHTML += '<p style="color:#ef4444;">Ошибка загрузки</p>';
     } finally {
         isLoading = false;
     }
-}
-
-// Фильтрация предметов по поисковой строке (локально)
-function filterItems(items) {
-    if (!searchQuery.trim()) return items;
-
-    const query = searchQuery.toLowerCase().trim();
-    return items.filter(item => {
-        return item.name.toLowerCase().includes(query);
-    });
-}
-
-// Отрисовка предметов
-function renderItems(items) {
-    const list = document.getElementById('items-list');
-    list.innerHTML = '';
-
-    if (items.length === 0) {
-        list.innerHTML = '<p style="text-align:center; color:#94a3b8;">Ничего не найдено</p>';
-        return;
-    }
-
-    items.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'item';
-        div.innerHTML = `
-            <img src="${item.image || 'https://via.placeholder.com/80x60?text=No+Image'}" alt="${item.name}">
-            <div class="item-info">
-                <strong>${item.name}</strong><br>
-                <span class="price">${item.price_stars} ⭐</span>
-                <p>В наличии: ${item.quantity || 'много'}</p>
-            </div>
-            <button class="btn" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}')">Купить</button>
-        `;
-        list.appendChild(div);
-    });
 }
 
 // Кнопка "Загрузить ещё"
@@ -171,50 +166,33 @@ function updateLoadMoreButton() {
     }
 }
 
-// Поиск по кнопке или Enter
+// Поиск
 function performSearch() {
     searchQuery = document.getElementById('search-input').value.trim();
-    console.log('[ПОИСК] Запрос:', searchQuery);
-
-    // Очищаем кэш и загружаем первую страницу с новым поиском
-    allLoadedItems = [];
     currentPage = 1;
     hasMore = true;
     fetchItems();
 }
 
-// Обработчики поиска с отладкой
+// Обработчики поиска
 document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('search-input');
     const button = document.getElementById('search-button');
 
-    if (input) {
-        console.log('[ОТЛАДКА] Поле поиска найдено');
-        input.addEventListener('keydown', (e) => {
-            console.log('[ОТЛАДКА] Клавиша нажата:', e.key);
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                console.log('[ПОИСК] Enter нажат');
-                performSearch();
-            }
-        });
-    } else {
-        console.error('[ОТЛАДКА] Поле #search-input не найдено!');
-    }
-
-    if (button) {
-        console.log('[ОТЛАДКА] Кнопка поиска найдена');
-        button.addEventListener('click', (e) => {
+    input?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
             e.preventDefault();
-            console.log('[ПОИСК] Кнопка "Искать" нажата');
             performSearch();
-        });
-    } else {
-        console.error('[ОТЛАДКА] Кнопка #search-button не найдена!');
-    }
+        }
+    });
+
+    button?.addEventListener('click', (e) => {
+        e.preventDefault();
+        performSearch();
+    });
 });
 
-// Покупка через Stars
+// Покупка
 async function buyItem(itemId, priceStars, itemName) {
     if (!priceStars || priceStars <= 0) return alert('Цена не указана');
 
@@ -230,15 +208,15 @@ async function buyItem(itemId, priceStars, itemName) {
         const data = await response.json();
         webApp.openInvoice(data.invoice_link, (status) => {
             if (status === 'paid') {
-                alert('⭐ Оплата прошла успешно! Предмет добавлен в профиль.');
+                alert('Оплата прошла! Предмет добавлен в профиль.');
                 loadProfile();
             } else if (status === 'failed' || status === 'cancelled') {
-                alert('Оплата отменена или не удалась.');
+                alert('Оплата не удалась.');
             }
         });
     } catch (error) {
         console.error('Ошибка оплаты:', error);
-        alert('Ошибка при оплате: ' + error.message);
+        alert('Ошибка: ' + error.message);
     }
 }
 
@@ -257,16 +235,16 @@ async function bindSteam() {
         });
 
         if (response.ok) {
-            alert('Steam профиль успешно привязан!');
+            alert('Steam успешно привязан!');
             loadProfile();
             document.getElementById('profile-input').value = '';
             document.getElementById('trade-input').value = '';
         } else {
-            alert('Ошибка при привязке.');
+            alert('Ошибка привязки');
         }
     } catch (error) {
-        console.error('Error binding Steam:', error);
-        alert('Ошибка сети.');
+        console.error('Bind error:', error);
+        alert('Ошибка сети');
     }
 }
 
@@ -276,5 +254,3 @@ loadProfile();
 switchTab('landing');
 
 console.log("Мини-приложение запущено");
-console.log("User ID:", userId);
-console.log("Backend URL:", backendUrl);

@@ -1,5 +1,7 @@
 import json
 import os
+from datetime import datetime
+from asyncio import create_task, sleep
 from dotenv import load_dotenv
 import aiohttp
 from fastapi import FastAPI, HTTPException, Body, Query
@@ -27,7 +29,15 @@ xpanda_headers = {
     "Content-Type": "application/json"
 }
 
-# Загрузка трёх отдельных JSON-файлов
+# Глобальный кэш всех предметов и время последнего обновления
+all_items_cache = []  # Полный список предметов (без пагинации)
+cache_timestamp = None
+CACHE_UPDATE_INTERVAL = 600  # 10 минут в секундах
+
+# Курс RUB to USD
+RUB_PER_USD = 82.0  # Обновляйте по мере необходимости
+
+# Загрузка трёх отдельных JSON-файлов для картинок
 skins_data = []
 crates_data = []
 stickers_data = []
@@ -53,15 +63,13 @@ try:
 except FileNotFoundError:
     print("stickers.json не найден")
 
-# Улучшенная функция поиска изображения
+# Улучшенная функция поиска изображения (твоя версия без изменений)
 def get_skin_image(name: str) -> str:
     name_lower = name.lower().strip()
 
-    # Очищаем название от префиксов xpanda
+    # Очищаем название
     cleaned_name = name_lower
-    # cleaned_name = cleaned_name.replace('sticker | ', '')
-    # cleaned_name = cleaned_name.replace('★ ', '')
-    # cleaned_name = cleaned_name.replace('case', '').strip()
+    cleaned_name = cleaned_name.replace('stattrak™ ', '')
     cleaned_name = cleaned_name.split('(')[0].strip()
 
     # 1. Скины оружия, ножи, перчатки — из skins.json
@@ -77,12 +85,6 @@ def get_skin_image(name: str) -> str:
     for crate in crates_data:
         crate_name = crate.get('name', '').lower()
         if name_lower == crate_name or cleaned_name in crate_name:
-            img = crate.get('image')
-            if img:
-                return img
-        # Дополнительное совпадение
-        crate_base = crate_name.replace('the ', '').strip()
-        if cleaned_name in crate_base or crate_base in cleaned_name:
             img = crate.get('image')
             if img:
                 return img
@@ -121,7 +123,8 @@ async def get_profile(telegram_id: int):
         "referrals": user.referrals,
         "items": items,
         "steam_profile": user.steam_profile,
-        "trade_link": user.trade_link
+        "trade_link": user.trade_link,
+        "has_gift": user.has_gift  # ← Новый флаг
     }
 
 
@@ -130,80 +133,109 @@ async def bind_steam(telegram_id: int, data: dict = Body(...)):
     await update_steam(telegram_id, data.get("profile"), data.get("trade_link"))
     return {"status": "success"}
 
+@app.post("/api/claim_gift/{telegram_id}")
+async def claim_gift(telegram_id: int):
+    user = await get_user(telegram_id)
+    if not user or not user.has_gift:
+        raise HTTPException(status_code=400, detail="Подарок недоступен")
 
-# Получение реальных предметов из xpanda.pro с изображениями
+    user.has_gift = False
+    await async_session.commit()
+    return {"status": "success"}
+
+# Фоновая задача обновления полного кэша предметов (раз в 10 минут)
+async def update_items_cache():
+    global all_items_cache, cache_timestamp
+    while True:
+        try:
+            print(f"[{datetime.now()}] Обновление полного кэша предметов...")
+            url = XPANDA_BASE_URL + "/items/prices/"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=xpanda_headers, timeout=30) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        items_list = data.get("items", [])
+                        
+                        if isinstance(items_list, list):
+                            result = []
+                            for item in items_list:
+                                name = item.get("n")
+                                price_rub = item.get("p", 0)
+                                quantity = item.get("q", 0)
+                                
+                                if not name or price_rub <= 0:
+                                    continue
+                                
+                                price_stars = max(1, int(price_rub / 1000 * 45))
+                                price_usd = round(price_rub / 1000, 2)  # Добавлен расчёт USD
+                                item_id = abs(hash(name)) % 1000000000
+                                image = get_skin_image(name)
+                                
+                                result.append({
+                                    "id": item_id,
+                                    "name": name,
+                                    "price_stars": price_stars,
+                                    "price_usd": price_usd,  # Новое поле
+                                    "image": image,
+                                    "quantity": quantity
+                                })
+                            
+                            all_items_cache = result
+                            cache_timestamp = datetime.now()
+                            print(f"Кэш обновлён! {len(all_items_cache)} предметов")
+                        else:
+                            print("Кэш не обновлён: items не список")
+                    else:
+                        print(f"Ошибка обновления кэша: статус {resp.status}")
+        except Exception as e:
+            print(f"Ошибка при обновлении кэша: {str(e)}")
+        
+        await sleep(CACHE_UPDATE_INTERVAL)
+
+
+# Запуск фоновой задачи при старте приложения
+@app.on_event("startup")
+async def startup_event():
+    create_task(update_items_cache())
+
+
+# Эндпоинт с серверной фильтрацией и пагинацией по кэшу
 @app.get("/api/items")
 async def get_items(
     page: int = Query(1, ge=1, description="Номер страницы"),
-    limit: int = Query(20, ge=5, le=50, description="Предметов на странице")
+    limit: int = Query(20, ge=5, le=50, description="Предметов на странице"),
+    search: str = Query("", description="Поиск по названию предмета (подстрока)")
 ):
-    url = XPANDA_BASE_URL + "/items/prices/"
-    
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, headers=xpanda_headers, timeout=20) as resp:
-                status = resp.status
-                text = await resp.text()
-                print(f"Статус: {status}")
-                print(f"Ответ (первые 500 символов): {text[:500]}...")
-                
-                if status != 200:
-                    return {"items": [], "total": 0, "page": page, "pages": 1}
-                
-                try:
-                    data = json.loads(text)
-                except json.JSONDecodeError as e:
-                    print(f"Ошибка парсинга JSON: {e}")
-                    return {"items": [], "total": 0, "page": page, "pages": 1}
-                
-                items_list = data.get("items")
-                if not isinstance(items_list, list):
-                    print("Ключ 'items' не найден или не список")
-                    return {"items": [], "total": 0, "page": page, "pages": 1}
-                
-                # Пагинация на сервере
-                start = (page - 1) * limit
-                end = start + limit
-                paginated = items_list[start:end]
-                
-                total = len(items_list)
-                pages = (total + limit - 1) // limit
-                
-                result = []
-                for item in paginated:
-                    name = item.get("n")
-                    price_rub = item.get("p", 0)
-                    quantity = item.get("q", 0)
-                    
-                    if not name or price_rub <= 0:
-                        continue
-                    
-                    price_stars = max(1, int(price_rub * 10))  # 1 RUB = 10 Stars — настрой
-                    item_id = abs(hash(name)) % 1000000000
-                    image = get_skin_image(name)
-                    
-                    result.append({
-                        "id": item_id,
-                        "name": name,
-                        "price_stars": price_stars,
-                        "image": image,
-                        "quantity": quantity
-                    })
-                
-                print(f"Успех! Загружено {len(result)} предметов на странице {page}")
-                return {
-                    "items": result,
-                    "total": total,
-                    "page": page,
-                    "pages": pages
-                }
-        
-        except Exception as e:
-            print(f"Общая ошибка при запросе к xpanda: {str(e)}")
-            return {"items": [], "total": 0, "page": page, "pages": 1}
+    if not all_items_cache:
+        return {"items": [], "total": 0, "page": page, "pages": 1, "message": "Кэш ещё не загружен"}
+
+    # Фильтрация по поисковому запросу
+    filtered = all_items_cache
+    if search.strip():
+        search_lower = search.lower().strip()
+        filtered = [
+            item for item in all_items_cache
+            if search_lower in item["name"].lower()
+        ]
+
+    # Пагинация по отфильтрованному списку
+    start = (page - 1) * limit
+    end = start + limit
+    paginated = filtered[start:end]
+
+    total = len(filtered)
+    pages = (total + limit - 1) // limit if limit > 0 else 1
+
+    return {
+        "items": paginated,
+        "total": total,
+        "page": page,
+        "pages": pages,
+        "cache_timestamp": cache_timestamp.isoformat() if cache_timestamp else None
+    }
 
 
-# Генерация инвойса для оплаты Stars
 @app.post("/api/create_invoice")
 async def create_invoice(data: dict):
     item_id = data.get('item_id')
@@ -229,7 +261,6 @@ async def create_invoice(data: dict):
         raise HTTPException(status_code=500, detail=f"Telegram invoice error: {str(e)}")
 
 
-# Создание сделки в xpanda.pro после успешной оплаты
 @app.post("/api/create_deal")
 async def create_deal(data: dict):
     user_id = data.get('user_id')
