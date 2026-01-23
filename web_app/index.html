@@ -26,11 +26,11 @@
             font-size: 24px;
             font-weight: 700;
             background: linear-gradient(90deg, #60a5fa, #a78bfa);
-            background-clip: text;              /* ← Добавлено стандартное свойство */
-            -webkit-background-clip: text;      /* ← Оставляем для полной совместимости */
-            color: transparent;                 /* ← Заменяем -webkit-text-fill-color */
-            -webkit-text-fill-color: transparent; /* ← Оставляем на всякий случай */
-            }
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            -webkit-text-fill-color: transparent;
+        }
         nav {
             display: flex;
             justify-content: space-around;
@@ -83,7 +83,7 @@
             font-weight: 600;
             cursor: pointer;
             width: 100%;
-            margin-top: 0px;
+            margin-top: 10px;
             transition: background 0.3s;
         }
         .btn:hover {
@@ -113,24 +113,10 @@
             font-weight: 700;
             font-size: 18px;
         }
-        input {
-            width: -webkit-fill-available;
-            padding: 12px;
-            margin: 10px 0;
-            background: #0f172a;
-            border: 1px solid #334155;
-            border-radius: 12px;
-            color: white;
-            font-size: 16px;
-        }
-        ul {
-            padding-left: 20px;
-        }
-        li {
-            margin: 8px 0;
-            padding: 8px;
-            background: #1e293b;
-            border-radius: 8px;
+        .price-usd {
+            color: #94a3b8;
+            font-size: 14px;
+            font-weight: 500;
         }
         .price-container {
             display: flex;
@@ -138,17 +124,29 @@
             gap: 10px;
             margin: 6px 0;
         }
-
-        .price {
-            color: #60a5fa;
-            font-weight: 700;
-            font-size: 18px;
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            box-sizing: border-box;
         }
-
-        .price-usd {
-            color: #94a3b8;
-            font-size: 14px;
-            font-weight: 500;
+        ul {
+            padding-left: 20px;
+            list-style: none;
+        }
+        li {
+            margin: 8px 0;
+            padding: 8px;
+            background: #1e293b;
+            border-radius: 8px;
+        }
+        #gift-section {
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -171,20 +169,20 @@
             <div class="card" style="word-break: break-all; background:#0f172a; padding:15px;">
                 <span id="ref-link"></span>
             </div>
-            <button class="btn" onclick="shareLink()" style="width: 100%">Поделиться ссылкой</button>
+            <button class="btn" onclick="shareLink()">Поделиться ссылкой</button>
         </div>
     </section>
 
     <section id="marketplace">
-    <div class="card">
-        <h2>🛒 Доступные предметы</h2>
-        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
-            <input type="text" id="search-input" placeholder="Поиск по названию..." style="flex: 1; padding: 10px 12px; border-radius: 12px; background: #1e293b; border: 1px solid #334155; color: white; font-size: 16px;">
-            <button id="search-button" class="btn" style="width: 44px; height: 44px; padding: 0; font-size: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; min-width: unset;">🔍</button>
+        <div class="card">
+            <h2>🛒 Доступные предметы</h2>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                <input type="text" id="search-input" placeholder="Поиск по названию..." style="flex: 1;">
+                <button id="search-button" class="btn" style="width: 44px; height: 44px; padding: 0; font-size: 18px; border-radius: 50%;">🔍</button>
+            </div>
+            <div id="items-list"></div>
         </div>
-        <div id="items-list"></div>
-    </div>
-</section>
+    </section>
 
     <section id="profile">
         <div class="card">
@@ -194,6 +192,9 @@
             <ul id="items"></ul>
             <p>Steam профиль: <span id="steam-profile">Не привязан</span></p>
             <p>Trade link: <span id="trade-link">Не привязан</span></p>
+
+            <!-- Блок для кнопки "Забрать подарок" — сюда JS вставит кнопку -->
+            <div id="gift-section"></div>
 
             <h3 style="margin-top:30px;">Привязать Steam</h3>
             <input id="profile-input" placeholder="Ссылка на Steam профиль">

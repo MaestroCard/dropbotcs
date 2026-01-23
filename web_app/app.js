@@ -12,7 +12,7 @@ fetch(location.href, {
 }).catch(() => {});
 
 const userId = webApp.initDataUnsafe.user?.id || 'unknown';
-const backendUrl = 'https://fleta-electrometallurgical-repercussively.ngrok-free.dev';  // ← актуальный ngrok
+const backendUrl = 'https://fleta-electrometallurgical-repercussively.ngrok-free.dev'; // ← актуальный ngrok
 
 const botUsername = 'bottest2314bot';
 
@@ -57,14 +57,41 @@ async function loadProfile() {
             itemsList.appendChild(li);
         });
 
-        if (data.has_gift) {
-            document.getElementById('gift-section').innerHTML = '<button class="btn" onclick="claimGift()">Забрать подарок 🎁</button>';
-        }
-
+        // Отображение Steam и Trade link
         document.getElementById('steam-profile').innerText = data.steam_profile || 'Не привязан';
         document.getElementById('trade-link').innerText = data.trade_link || 'Не привязан';
+
+        // Показываем кнопку подарка, если он есть
+        const giftSection = document.getElementById('gift-section');
+        if (data.has_gift) {
+            giftSection.innerHTML = '<button class="btn" onclick="claimGift()">Забрать подарок 🎁</button>';
+        } else {
+            giftSection.innerHTML = '';
+        }
     } catch (error) {
         console.error('Error loading profile:', error);
+        document.getElementById('items').innerHTML = '<p style="color:#ef4444;">Ошибка загрузки профиля</p>';
+    }
+}
+
+// Получение подарка
+async function claimGift() {
+    try {
+        const response = await fetch(`${backendUrl}/api/claim_gift/${userId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (response.ok) {
+            alert('Подарок успешно забран!');
+            loadProfile(); // обновляем профиль
+        } else {
+            const err = await response.text();
+            alert('Ошибка при получении подарка: ' + err);
+        }
+    } catch (error) {
+        console.error('Claim gift error:', error);
+        alert('Ошибка сети');
     }
 }
 
@@ -73,13 +100,6 @@ function generateRefLink() {
     const refLink = `t.me/${botUsername}?start=${userId}`;
     const refElement = document.getElementById('ref-link');
     if (refElement) refElement.innerText = refLink;
-}
-
-async function claimGift() {
-    // Можно отправить запрос на сервер, чтобы отметить подарок полученным
-    await fetch(`${backendUrl}/api/claim_gift/${userId}`, { method: 'POST' });
-    alert('Подарок получен! Проверьте профиль.');
-    loadProfile();  // Обновляем профиль
 }
 
 function shareLink() {
@@ -131,7 +151,7 @@ async function fetchItems() {
                         </div>
                         <p>В наличии: ${item.quantity || 'много'}</p>
                     </div>
-                    <button class="btn" style="width: 30%" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}')">Купить</button>
+                    <button class="btn" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}')">Купить</button>
                 `;
                 list.appendChild(div);
             });
@@ -166,7 +186,7 @@ function updateLoadMoreButton() {
     }
 }
 
-// Поиск
+// Поиск по кнопке или Enter
 function performSearch() {
     searchQuery = document.getElementById('search-input').value.trim();
     currentPage = 1;
@@ -192,24 +212,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// Покупка
-async function buyItem(itemId, priceStars, itemName) {
+// Покупка (теперь с product_id)
+async function buyItem(itemId, priceStars, itemName, productId = '') {
     if (!priceStars || priceStars <= 0) return alert('Цена не указана');
 
     try {
+        const body = {
+            item_id: itemId,
+            user_id: userId,
+            price_stars: priceStars
+        };
+        if (productId) {
+            body.product_id = productId;  // ← обязательно для Xpanda
+        } else {
+            console.warn('[BUY] product_id не найден, fallback на name');
+            body.product_id = itemName;
+        }
+
+        console.log('[BUY] Отправляемые данные:', body);  // ← отладка в консоль браузера
+
         const response = await fetch(`${backendUrl}/api/create_invoice`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, user_id: userId, price_stars: priceStars })
+            body: JSON.stringify(body)
         });
 
-        if (!response.ok) throw new Error('Не удалось создать инвойс');
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error('Не удалось создать инвойс: ' + err);
+        }
 
         const data = await response.json();
         webApp.openInvoice(data.invoice_link, (status) => {
             if (status === 'paid') {
-                alert('Оплата прошла! Предмет добавлен в профиль.');
-                loadProfile();
+                alert('⭐ Оплата прошла успешно! Предмет добавлен в профиль.');
+                loadProfile(); // обновляем профиль
             } else if (status === 'failed' || status === 'cancelled') {
                 alert('Оплата не удалась.');
             }
@@ -236,11 +273,12 @@ async function bindSteam() {
 
         if (response.ok) {
             alert('Steam успешно привязан!');
-            loadProfile();
+            loadProfile(); // обновляем профиль после привязки
             document.getElementById('profile-input').value = '';
             document.getElementById('trade-input').value = '';
         } else {
-            alert('Ошибка привязки');
+            const err = await response.text();
+            alert('Ошибка привязки: ' + err);
         }
     } catch (error) {
         console.error('Bind error:', error);
@@ -254,3 +292,5 @@ loadProfile();
 switchTab('landing');
 
 console.log("Мини-приложение запущено");
+console.log("Версия app.js: 2026-01-23-v4");
+alert("Версия v4 загружена!");

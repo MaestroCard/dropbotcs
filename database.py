@@ -3,13 +3,12 @@ import json
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.exc import IntegrityError
 
 Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True)                    # Автоинкремент
+    id = Column(Integer, primary_key=True)
     telegram_id = Column(Integer, unique=True, nullable=False)
     referred_by = Column(Integer, ForeignKey('users.telegram_id'), nullable=True)
     referrals = Column(Integer, default=0)
@@ -31,7 +30,7 @@ async def get_user(telegram_id: int, session: AsyncSession = None) -> User | Non
     if session:
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
-    
+
     async with async_session() as sess:
         result = await sess.execute(stmt)
         return result.scalar_one_or_none()
@@ -42,7 +41,7 @@ async def add_user(telegram_id: int, referred_by: int = None) -> User:
             stmt = select(User).where(User.telegram_id == telegram_id)
             result = await session.execute(stmt)
             user = result.scalar_one_or_none()
-            
+
             if user:
                 print(f"Пользователь {telegram_id} уже существует")
                 return user
@@ -62,7 +61,7 @@ async def add_referral(referrer_telegram_id: int):
             stmt = select(User).where(User.telegram_id == referrer_telegram_id)
             result = await session.execute(stmt)
             user = result.scalar_one_or_none()
-            
+
             if user:
                 user.referrals += 1
                 print(f"У пользователя {referrer_telegram_id} теперь {user.referrals} рефералов")
@@ -75,7 +74,7 @@ async def update_steam(telegram_id: int, profile: str, trade_link: str):
             stmt = select(User).where(User.telegram_id == telegram_id)
             result = await session.execute(stmt)
             user = result.scalar_one_or_none()
-            
+
             if user:
                 user.steam_profile = profile
                 user.trade_link = trade_link
