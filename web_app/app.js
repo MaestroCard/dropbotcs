@@ -151,7 +151,7 @@ async function fetchItems() {
                         </div>
                         <p>В наличии: ${item.quantity || 'много'}</p>
                     </div>
-                    <button class="btn" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}')">Купить</button>
+                    <button class="btn" style="width: 30%" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}')">Купить</button>
                 `;
                 list.appendChild(div);
             });
@@ -293,4 +293,4 @@ switchTab('landing');
 
 console.log("Мини-приложение запущено");
 console.log("Версия app.js: 2026-01-23-v4");
-alert("Версия v4 загружена!");
+// alert("Версия v4 загружена!");

@@ -1,3 +1,5 @@
+# database.py — с полной блокировкой саморефералов и дубликатов
+
 import asyncio
 import json
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, select
@@ -46,6 +48,11 @@ async def add_user(telegram_id: int, referred_by: int = None) -> User:
                 print(f"Пользователь {telegram_id} уже существует")
                 return user
 
+            # Блокировка самореферала
+            if referred_by == telegram_id:
+                print(f"[WARNING] Самореферал от {telegram_id} — игнорируем")
+                referred_by = None
+
             user = User(
                 telegram_id=telegram_id,
                 referred_by=referred_by
@@ -55,18 +62,44 @@ async def add_user(telegram_id: int, referred_by: int = None) -> User:
         print(f"Добавлен новый пользователь: {telegram_id}, приглашён {referred_by}")
         return user
 
-async def add_referral(referrer_telegram_id: int):
+async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
     async with async_session() as session:
         async with session.begin():
-            stmt = select(User).where(User.telegram_id == referrer_telegram_id)
-            result = await session.execute(stmt)
-            user = result.scalar_one_or_none()
+            # Находим пригласившего
+            stmt_inviter = select(User).where(User.telegram_id == referrer_telegram_id)
+            result_inviter = await session.execute(stmt_inviter)
+            inviter = result_inviter.scalar_one_or_none()
 
-            if user:
-                user.referrals += 1
-                print(f"У пользователя {referrer_telegram_id} теперь {user.referrals} рефералов")
-            else:
+            if not inviter:
                 print(f"Пригласивший {referrer_telegram_id} не найден")
+                return
+
+            # Находим приглашённого
+            stmt_invited = select(User).where(User.telegram_id == invited_telegram_id)
+            result_invited = await session.execute(stmt_invited)
+            invited = result_invited.scalar_one_or_none()
+
+            if not invited:
+                print(f"Приглашённый {invited_telegram_id} не найден")
+                return
+
+            # Блокировка самореферала
+            if invited_telegram_id == referrer_telegram_id:
+                print(f"[WARNING] Самореферал {invited_telegram_id} от {referrer_telegram_id} — игнорируем")
+                return
+
+            # Проверяем, не был ли этот пользователь уже приглашён кем-то другим
+            if invited.referred_by is not None:
+                if invited.referred_by == referrer_telegram_id:
+                    print(f"[INFO] Пользователь {invited_telegram_id} уже приглашён {referrer_telegram_id} — повторно не засчитываем")
+                else:
+                    print(f"[WARNING] Пользователь {invited_telegram_id} уже приглашён другим ({invited.referred_by}) — не засчитываем")
+                return
+
+            # Если ещё не приглашён — устанавливаем и увеличиваем
+            invited.referred_by = referrer_telegram_id
+            inviter.referrals += 1
+            print(f"У пользователя {referrer_telegram_id} теперь {inviter.referrals} рефералов (добавлен {invited_telegram_id})")
 
 async def update_steam(telegram_id: int, profile: str, trade_link: str):
     async with async_session() as session:
