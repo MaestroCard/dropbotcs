@@ -1,4 +1,4 @@
-# app.py — полный файл с lifespan и webhook (без on_event / on_shutdown)
+# app.py — полный, с lifespan и webhook
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Body, Query, Request
@@ -14,7 +14,7 @@ import json
 import aiohttp
 from database import async_session, get_user, update_steam
 from cache import cache
-from bot import dp  # импортируем dp для webhook
+from bot import dp  # dp для webhook
 
 load_dotenv()
 
@@ -35,12 +35,10 @@ xpanda_headers = {
     "Content-Type": "application/json"
 }
 
-# Lifespan для установки/удаления webhook
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: установка webhook
     webhook_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/webhook"
-    webhook_secret = os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token-64-symbols")
+    webhook_secret = os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
 
     await bot.set_webhook(
         url=webhook_url,
@@ -49,12 +47,10 @@ async def lifespan(app: FastAPI):
     )
     print(f"Webhook установлен: {webhook_url}")
 
-    yield  # приложение работает
+    yield
 
-    # Shutdown: удаление webhook
     await bot.delete_webhook(drop_pending_updates=True)
     print("Webhook удалён")
-
 
 app = FastAPI(lifespan=lifespan)
 
@@ -67,6 +63,15 @@ app.add_middleware(
 )
 
 app.mount("/web_app", StaticFiles(directory="web_app", html=True), name="web_app")
+
+# Регистрация webhook-роутера
+webhook_handler = SimpleRequestHandler(
+    dispatcher=dp,
+    bot=bot,
+    secret_token=os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
+)
+webhook_handler.register(app, path="/webhook")
+setup_application(app, dp, bot=bot)
 
 @app.get("/api/profile/{telegram_id}")
 async def get_profile(telegram_id: int):
