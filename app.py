@@ -1,4 +1,4 @@
-# app.py — с lifespan вместо on_event
+# app.py — полный файл с lifespan и webhook (без on_event / on_shutdown)
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Body, Query, Request
@@ -49,8 +49,7 @@ async def lifespan(app: FastAPI):
     )
     print(f"Webhook установлен: {webhook_url}")
 
-    # Запуск приложения
-    yield
+    yield  # приложение работает
 
     # Shutdown: удаление webhook
     await bot.delete_webhook(drop_pending_updates=True)
@@ -122,7 +121,7 @@ async def get_items(
     start = (page - 1) * limit
     paginated = filtered[start:start + limit]
 
-    # Добавляем product_id в каждый предмет (если не добавлено в cache)
+    # Добавляем product_id в каждый предмет
     for item in paginated:
         item["product_id"] = item.get("product_id", item["name"])
 
@@ -140,7 +139,7 @@ async def get_items(
 
 @app.post("/api/create_invoice")
 async def create_invoice(data: dict):
-    print("[DEBUG INVOICE] Полученные данные:", data)  # ← добавь эту строку
+    print("[DEBUG INVOICE] Полученные данные:", data)
 
     item_id = data.get('item_id')
     product_id = data.get('product_id')
@@ -208,12 +207,3 @@ async def create_deal(data: dict):
                     raise HTTPException(status_code=502, detail=f"Xpanda error {resp.status}: {error_text}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Deal creation failed: {str(e)}")
-        
-# Регистрация webhook-роутера (вне lifespan)
-webhook_handler = SimpleRequestHandler(
-    dispatcher=dp,
-    bot=bot,
-    secret_token=os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token-64-symbols")
-)
-webhook_handler.register(app, path="/webhook")
-setup_application(app, dp, bot=bot)
