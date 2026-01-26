@@ -1,27 +1,27 @@
-# database.py — PostgreSQL версия (полностью готова к Railway/Render/Fly.io)
+# database.py — только PostgreSQL (asyncpg)
 
 import asyncio
 import json
 import os
+from dotenv import load_dotenv
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from dotenv import load_dotenv
 
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL не найден в .env! Добавьте в .env строку вида postgresql://user:pass@host:port/dbname")
+    raise RuntimeError("DATABASE_URL не найден в .env! Добавьте строку вида: postgresql+asyncpg://user:pass@host:port/dbname")
 
-# Подключение к PostgreSQL (с пулом соединений)
+# Подключение к PostgreSQL (только asyncpg)
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,               # выключи логи SQL-запросов в продакшене
-    pool_size=5,              # максимум 5 одновременных соединений
-    max_overflow=10,          # дополнительные соединения при пике
-    pool_timeout=30           # таймаут ожидания соединения
+    echo=False,               # выключи в проде, включи для отладки
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30
 )
 
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -43,7 +43,7 @@ class User(Base):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        print("База данных PostgreSQL инициализирована")
+        print("База данных PostgreSQL инициализирована и таблицы созданы")
 
 async def get_user(telegram_id: int, session: AsyncSession = None) -> User | None:
     stmt = select(User).where(User.telegram_id == telegram_id)
