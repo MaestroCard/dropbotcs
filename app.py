@@ -1,14 +1,20 @@
-from fastapi import FastAPI, HTTPException, Body, Query
+# app.py — с lifespan вместо on_event
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Body, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from aiogram import Bot
 from aiogram.methods import CreateInvoiceLink
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 from dotenv import load_dotenv
 import os
 import json
 import aiohttp
 from database import async_session, get_user, update_steam
 from cache import cache
+from bot import dp  # импортируем dp для webhook
 
 load_dotenv()
 
@@ -29,7 +35,28 @@ xpanda_headers = {
     "Content-Type": "application/json"
 }
 
-app = FastAPI()
+# Lifespan-обработчик вместо on_event
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: установка webhook
+    webhook_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/webhook"
+    webhook_secret = os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
+
+    await bot.set_webhook(
+        url=webhook_url,
+        secret_token=webhook_secret,
+        drop_pending_updates=True
+    )
+    print(f"Webhook установлен: {webhook_url}")
+
+    yield  # здесь приложение работает
+
+    # Shutdown: удаление webhook
+    await bot.delete_webhook(drop_pending_updates=True)
+    print("Webhook удалён")
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -180,3 +207,12 @@ async def create_deal(data: dict):
                     raise HTTPException(status_code=502, detail=f"Xpanda error {resp.status}: {error_text}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Deal creation failed: {str(e)}")
+        
+# Регистрация webhook-роутера
+webhook_handler = SimpleRequestHandler(
+    dispatcher=dp,
+    bot=bot,
+    secret_token=os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
+)
+webhook_handler.register(app, path="/webhook")
+setup_application(app, dp, bot=bot)

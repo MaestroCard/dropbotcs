@@ -1,5 +1,8 @@
+# main.py — теперь с webhook
+
 import asyncio
 import uvicorn
+import os
 from bot import dp, bot
 from app import app
 from cache import cache
@@ -10,19 +13,24 @@ async def main():
     await init_db()
     print("База данных инициализирована")
 
-    # Запуск обновления кэша предметов
+    # Запуск обновления кэша
     asyncio.create_task(cache.update())
 
-    # Запуск Telegram-бота
-    bot_task = asyncio.create_task(dp.start_polling(bot))
+    # Установка webhook
+    webhook_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/webhook"  # Railway сам даёт домен
+    webhook_secret = os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")  # придумай длинный секрет
 
-    # Запуск FastAPI сервера
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+    await bot.set_webhook(
+        url=webhook_url,
+        secret_token=webhook_secret,
+        drop_pending_updates=True  # очистить очередь старых сообщений
+    )
+    print(f"Webhook установлен: {webhook_url}")
+
+    # Запуск FastAPI сервера (он будет обрабатывать /webhook)
+    config = uvicorn.Config(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)), log_level="info")
     server = uvicorn.Server(config)
-    server_task = asyncio.create_task(server.serve())
-
-    # Запускаем всё параллельно
-    await asyncio.gather(bot_task, server_task)
+    await server.serve()
 
 if __name__ == "__main__":
     asyncio.run(main())

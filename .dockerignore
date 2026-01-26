@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+users.db
+data/*.json  # если не нужны в образе
+web_app/static  # если есть большие файлы
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
