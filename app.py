@@ -1,10 +1,10 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Body, Query
+from fastapi import FastAPI, HTTPException, Body, Query, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from aiogram import Bot
 from aiogram.methods import CreateInvoiceLink
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiogram.types import Update
 from dotenv import load_dotenv
 import os
 import json
@@ -17,6 +17,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 XPANDA_API_KEY = os.getenv('XPANDA_API_KEY')
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token-here-change-me")
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN не найден в .env")
@@ -34,16 +35,21 @@ xpanda_headers = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    webhook_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/webhook"
-    webhook_secret = os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
+    # Railway / Render / Fly.io обычно используют переменную RAILWAY_PUBLIC_DOMAIN или аналог
+    domain = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('PUBLIC_DOMAIN')
+    if not domain:
+        raise RuntimeError("Не найден публичный домен (RAILWAY_PUBLIC_DOMAIN)")
+
+    webhook_url = f"https://{domain}/webhook"
 
     try:
         await bot.set_webhook(
             url=webhook_url,
-            secret_token=webhook_secret,
+            secret_token=WEBHOOK_SECRET,
             drop_pending_updates=True
         )
         print(f"Webhook успешно установлен: {webhook_url}")
+        print(f"Secret token: {WEBHOOK_SECRET[:8]}... (скрыто)")
     except Exception as e:
         print(f"Ошибка установки webhook: {str(e)}")
 
@@ -54,6 +60,7 @@ async def lifespan(app: FastAPI):
         print("Webhook удалён")
     except Exception as e:
         print(f"Ошибка удаления webhook: {str(e)}")
+
 
 app = FastAPI(lifespan=lifespan)
 
@@ -67,6 +74,23 @@ app.add_middleware(
 
 app.mount("/web_app", StaticFiles(directory="web_app", html=True), name="web_app")
 
+
+# ─── Ручной обработчик webhook от Telegram ────────────────────────────────
+@app.post("/webhook")
+async def telegram_webhook(
+    request: Request,
+    update: Update,
+    x_telegram_bot_api_secret_token: str = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token")
+):
+    if x_telegram_bot_api_secret_token != WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid secret token")
+
+    # Передаём обновление в aiogram-диспетчер
+    await dp.feed_update(bot, update)
+    return {"ok": True}
+
+
+# ─── Остальные эндпоинты остаются без изменений ───────────────────────────
 
 @app.get("/api/profile/{telegram_id}")
 async def get_profile(telegram_id: int):
@@ -205,13 +229,3 @@ async def create_deal(data: dict):
                     raise HTTPException(status_code=502, detail=f"Xpanda error {resp.status}: {error_text}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Deal creation failed: {str(e)}")
-
-
-# Регистрация webhook-обработчика (вне lifespan!)
-webhook_handler = SimpleRequestHandler(
-    dispatcher=dp,
-    bot=bot,
-    secret_token=os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
-)
-webhook_handler.register(app, path="/webhook")
-setup_application(app, dp, bot=bot)
