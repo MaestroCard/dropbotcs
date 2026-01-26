@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 from dotenv import load_dotenv
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, select
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, BigInteger, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -35,8 +35,8 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=False)
-    referred_by = Column(Integer, ForeignKey('users.telegram_id'), nullable=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False)
+    referred_by = Column(BigInteger, ForeignKey('users.telegram_id'), nullable=True)
     referrals = Column(Integer, default=0)
     items_received = Column(String, default="[]")
     steam_profile = Column(String, nullable=True)

@@ -109,7 +109,7 @@ function shareLink() {
     if (refText) webApp.switchInlineQuery(`Пригласи друга в CS2 Marketplace и получи скин бесплатно! ${refText}`);
 }
 
-// Загрузка предметов
+// Загрузка предметов (изменённая функция для ровности и компактных кнопок)
 async function fetchItems() {
     if (isLoading || !hasMore) return;
     isLoading = true;
@@ -145,12 +145,15 @@ async function fetchItems() {
                 div.className = 'item';
                 div.innerHTML = `
                     <img src="${item.image}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/80x60?text=Item'">
-                    <div>
+                    <div style="flex: 1;">  <!-- Занимает пространство для ровности -->
                         <h3>${item.name}</h3>
-                        <p>${item.price_stars} ⭐ (${item.price_usd}$)</p>
+                        <div class="price-container">  <!-- Ровная строка для цены -->
+                            <span class="price">${item.price_stars} ⭐</span>
+                            <span class="price-usd">(${item.price_usd}$)</span>
+                        </div>
                         <p>В наличии: ${item.quantity || 'много'}</p>
                     </div>
-                    <button class="btn" style="width: 30%" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}')">Купить</button>
+                    <button class="btn" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}')">Купить</button>
                 `;
                 list.appendChild(div);
             });
