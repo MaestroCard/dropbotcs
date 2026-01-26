@@ -68,12 +68,6 @@ app.add_middleware(
 
 app.mount("/web_app", StaticFiles(directory="web_app", html=True), name="web_app")
 
-import requests
-@app.get("/my-ip")
-async def my_ip():
-    ip = requests.get("https://api.ipify.org").text
-    return {"ip": ip}
-
 @app.get("/api/profile/{telegram_id}")
 async def get_profile(telegram_id: int):
     user = await get_user(telegram_id)

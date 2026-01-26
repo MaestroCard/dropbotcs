@@ -19,6 +19,7 @@ xpanda_headers = {
 
 class ItemsCache:
     _instance = None
+    _ip_logged = False  # флаг, чтобы логировать IP только один раз
 
     def __new__(cls):
         if cls._instance is None:
@@ -76,6 +77,18 @@ class ItemsCache:
     async def update(self):
         while True:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] → Обновление кэша предметов...")
+
+            # Получаем IP сервера один раз (4-й способ)
+            if not self._ip_logged:
+                try:
+                    async with aiohttp.ClientSession() as temp_session:
+                        async with temp_session.get("https://api.ipify.org") as resp:
+                            server_ip = await resp.text()
+                            print(f"[DEBUG IP] Исходящий IP сервера: {server_ip}")
+                            self._ip_logged = True  # больше не логируем
+                except Exception as e:
+                    print(f"[DEBUG IP] Ошибка получения IP: {str(e)}")
+
             try:
                 url = XPANDA_BASE_URL + "/items/prices/"
                 async with aiohttp.ClientSession() as session:
@@ -106,14 +119,14 @@ class ItemsCache:
                             price_stars = max(1, int(price_rub / 1000 * 45))
                             price_usd = round(price_rub / 1000, 2)
 
-                            item_id = abs(hash(name)) % 1000000000  # ← внутренний id для фронта
-                            product_id = name  # ← ВАЖНО: реальный ID продукта от Xpanda (поле "n")
+                            item_id = abs(hash(name)) % 1000000000
+                            product_id = name
 
                             image = self.get_skin_image(name)
 
                             result.append({
-                                "id": item_id,          # для фронта и внутренних ссылок
-                                "product_id": product_id,  # ← для отправки в Xpanda
+                                "id": item_id,
+                                "product_id": product_id,
                                 "name": name,
                                 "price_stars": price_stars,
                                 "price_usd": price_usd,
