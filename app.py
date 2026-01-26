@@ -1,20 +1,17 @@
-# app.py — полный, с lifespan и webhook
-
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Body, Query, Request
+from fastapi import FastAPI, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from aiogram import Bot
 from aiogram.methods import CreateInvoiceLink
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
 from dotenv import load_dotenv
 import os
 import json
 import aiohttp
 from database import async_session, get_user, update_steam
 from cache import cache
-from bot import dp  # dp для webhook
+from bot import dp  # dp из bot.py
 
 load_dotenv()
 
@@ -40,17 +37,23 @@ async def lifespan(app: FastAPI):
     webhook_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/webhook"
     webhook_secret = os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
 
-    await bot.set_webhook(
-        url=webhook_url,
-        secret_token=webhook_secret,
-        drop_pending_updates=True
-    )
-    print(f"Webhook установлен: {webhook_url}")
+    try:
+        await bot.set_webhook(
+            url=webhook_url,
+            secret_token=webhook_secret,
+            drop_pending_updates=True
+        )
+        print(f"Webhook успешно установлен: {webhook_url}")
+    except Exception as e:
+        print(f"Ошибка установки webhook: {str(e)}")
 
     yield
 
-    await bot.delete_webhook(drop_pending_updates=True)
-    print("Webhook удалён")
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        print("Webhook удалён")
+    except Exception as e:
+        print(f"Ошибка удаления webhook: {str(e)}")
 
 app = FastAPI(lifespan=lifespan)
 
@@ -64,14 +67,6 @@ app.add_middleware(
 
 app.mount("/web_app", StaticFiles(directory="web_app", html=True), name="web_app")
 
-# Регистрация webhook-роутера
-webhook_handler = SimpleRequestHandler(
-    dispatcher=dp,
-    bot=bot,
-    secret_token=os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
-)
-webhook_handler.register(app, path="/webhook")
-setup_application(app, dp, bot=bot)
 
 @app.get("/api/profile/{telegram_id}")
 async def get_profile(telegram_id: int):
@@ -125,7 +120,6 @@ async def get_items(
     start = (page - 1) * limit
     paginated = filtered[start:start + limit]
 
-    # Добавляем product_id в каждый предмет
     for item in paginated:
         item["product_id"] = item.get("product_id", item["name"])
 
@@ -211,3 +205,13 @@ async def create_deal(data: dict):
                     raise HTTPException(status_code=502, detail=f"Xpanda error {resp.status}: {error_text}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Deal creation failed: {str(e)}")
+
+
+# Регистрация webhook-обработчика (вне lifespan!)
+webhook_handler = SimpleRequestHandler(
+    dispatcher=dp,
+    bot=bot,
+    secret_token=os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
+)
+webhook_handler.register(app, path="/webhook")
+setup_application(app, dp, bot=bot)
