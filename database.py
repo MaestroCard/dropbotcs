@@ -1,4 +1,4 @@
-# database.py — только PostgreSQL + asyncpg (без psycopg2 и SQLite)
+# database.py — PostgreSQL + asyncpg (без psycopg2)
 
 import asyncio
 import json
@@ -15,10 +15,14 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL не найден в .env! Добавьте строку вида: postgresql+asyncpg://user:pass@host:port/dbname")
 
-# Подключение к PostgreSQL (только asyncpg)
+# Явно указываем asyncpg-драйвер
+if "postgresql://" in DATABASE_URL and "postgresql+asyncpg://" not in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+    print("Автоматически добавлен +asyncpg в DATABASE_URL")
+
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,               # выключи в проде, включи для отладки
+    echo=False,
     pool_size=5,
     max_overflow=10,
     pool_timeout=30
@@ -83,7 +87,6 @@ async def add_user(telegram_id: int, referred_by: int = None) -> User:
 async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
     async with async_session() as session:
         async with session.begin():
-            # Находим пригласившего
             stmt_inviter = select(User).where(User.telegram_id == referrer_telegram_id)
             result_inviter = await session.execute(stmt_inviter)
             inviter = result_inviter.scalar_one_or_none()
@@ -92,7 +95,6 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
                 print(f"Пригласивший {referrer_telegram_id} не найден")
                 return
 
-            # Находим приглашённого
             stmt_invited = select(User).where(User.telegram_id == invited_telegram_id)
             result_invited = await session.execute(stmt_invited)
             invited = result_invited.scalar_one_or_none()
@@ -101,12 +103,10 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
                 print(f"Приглашённый {invited_telegram_id} не найден")
                 return
 
-            # Блокировка самореферала
             if invited_telegram_id == referrer_telegram_id:
                 print(f"[WARNING] Самореферал {invited_telegram_id} от {referrer_telegram_id} — игнорируем")
                 return
 
-            # Проверяем, не был ли этот пользователь уже приглашён кем-то другим
             if invited.referred_by is not None:
                 if invited.referred_by == referrer_telegram_id:
                     print(f"[INFO] Пользователь {invited_telegram_id} уже приглашён {referrer_telegram_id} — повторно не засчитываем")
@@ -114,7 +114,6 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
                     print(f"[WARNING] Пользователь {invited_telegram_id} уже приглашён другим ({invited.referred_by}) — не засчитываем")
                 return
 
-            # Если ещё не приглашён — устанавливаем и увеличиваем
             invited.referred_by = referrer_telegram_id
             inviter.referrals += 1
             print(f"У пользователя {referrer_telegram_id} теперь {inviter.referrals} рефералов (добавлен {invited_telegram_id})")
