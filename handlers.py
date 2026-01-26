@@ -106,7 +106,7 @@ async def claim_gift_callback(callback: types.CallbackQuery):
         await callback.answer("Неверный формат trade-ссылки. Проверьте ссылку в профиле!", show_alert=True)
         return
 
-    cheap_items = sorted(cache.all_items, key=lambda x: x["price_stars"])[:10]
+    cheap_items = sorted(cache.all_items, key=lambda x: x["price_stars"])[:int(os.getenv("CHEAP_ITEMS_COUNT", 5))]
     if not cheap_items:
         await callback.answer("Подарков пока нет. Попробуйте позже!", show_alert=True)
         return

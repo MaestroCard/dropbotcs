@@ -6,13 +6,15 @@ webApp.ready();
 // Скрываем главную кнопку Telegram
 webApp.MainButton.hide();
 
-// Обход ngrok warning
+// Обход ngrok warning (если используешь ngrok локально)
 fetch(location.href, {
     headers: { 'ngrok-skip-browser-warning': '69420' }
 }).catch(() => {});
 
 const userId = webApp.initDataUnsafe.user?.id || 'unknown';
-const backendUrl = 'https://fleta-electrometallurgical-repercussively.ngrok-free.dev'; // ← актуальный ngrok
+
+// Динамический backendUrl на основе текущего домена (работает на Railway, ngrok, localhost)
+const backendUrl = window.location.origin; // Например: https://your-project.up.railway.app
 
 const botUsername = 'bottest2314bot';
 
@@ -135,20 +137,17 @@ async function fetchItems() {
         if (currentPage === 1) list.innerHTML = '';
 
         if (!data.items || data.items.length === 0) {
-            list.innerHTML = '<p style="text-align:center; color:#94a3b8;">Ничего не найдено</p>';
+            list.innerHTML = '<p style="text-align:center; color:#9ca3af;">Нет предметов</p>';
             hasMore = false;
         } else {
             data.items.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'item';
                 div.innerHTML = `
-                    <img src="${item.image || 'https://via.placeholder.com/80x60?text=No+Image'}" alt="${item.name}">
-                    <div class="item-info">
-                        <strong>${item.name}</strong>
-                        <div class="price-container">
-                            <span class="price">${item.price_stars} ⭐</span>
-                            <span class="price-usd">≈ $${item.price_usd || '?'}</span>
-                        </div>
+                    <img src="${item.image}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/80x60?text=Item'">
+                    <div>
+                        <h3>${item.name}</h3>
+                        <p>${item.price_stars} ⭐ (${item.price_usd}$)</p>
                         <p>В наличии: ${item.quantity || 'много'}</p>
                     </div>
                     <button class="btn" style="width: 30%" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}')">Купить</button>

@@ -26,7 +26,7 @@ class ItemsCache:
             cls._instance = super(ItemsCache, cls).__new__(cls)
             cls._instance.all_items = []
             cls._instance.cache_timestamp = None
-            cls._instance.CACHE_UPDATE_INTERVAL = 300
+            cls._instance.CACHE_UPDATE_INTERVAL = int(os.getenv("CACHE_UPDATE_INTERVAL", 300))
         return cls._instance
 
     def __init__(self):
@@ -116,7 +116,7 @@ class ItemsCache:
                                 skipped += 1
                                 continue
 
-                            price_stars = max(1, int(price_rub / 1000 * 45))
+                            price_stars = max(1, int(price_rub / 1000 * int(os.getenv("DOLAR_TO_STARS", 45))))
                             price_usd = round(price_rub / 1000, 2)
 
                             item_id = abs(hash(name)) % 1000000000
