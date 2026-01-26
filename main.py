@@ -1,4 +1,4 @@
-# main.py — только FastAPI + webhook (polling удалён)
+# main.py — полный, с правильным PORT
 
 import asyncio
 import uvicorn
@@ -11,14 +11,15 @@ async def main():
     await init_db()
     print("База данных инициализирована")
 
-    # Запуск обновления кэша
     asyncio.create_task(cache.update())
 
-    # Запуск FastAPI сервера (он сам обрабатывает webhook)
+    port = int(os.getenv("PORT", 8000))  # Railway требует PORT
+    print(f"Запуск сервера на порту {port}")
+
     config = uvicorn.Config(
         app,
         host="0.0.0.0",
-        port=int(os.getenv("PORT", 8000)),
+        port=port,
         log_level="info"
     )
     server = uvicorn.Server(config)
