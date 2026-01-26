@@ -1,4 +1,4 @@
-# database.py — только PostgreSQL (asyncpg)
+# database.py — только PostgreSQL + asyncpg (без psycopg2 и SQLite)
 
 import asyncio
 import json
