@@ -162,6 +162,56 @@
     </style>
 </head>
 <body>
-    <!-- Остальной HTML без изменений -->
+    <header>
+        <h1>CS2 Marketplace</h1>
+    </header>
+
+    <nav>
+        <button class="active" onclick="switchTab('landing')">Лендинг</button>
+        <button onclick="switchTab('marketplace')">Маркетплейс</button>
+        <button onclick="switchTab('profile')">Профиль</button>
+    </nav>
+
+    <section id="landing" class="active">
+        <div class="card">
+            <h2>🎁 Получи бесплатный предмет!</h2>
+            <p>Пригласи <strong>3 друзей</strong> в бот — и получи рандомный скин CS2 бесплатно!</p>
+            <p>Твоя реферальная ссылка:</p>
+            <div class="card" style="word-break: break-all; background:#0f172a; padding:15px;">
+                <span id="ref-link"></span>
+            </div>
+            <button class="btn" onclick="shareLink()">Поделиться ссылкой</button>
+        </div>
+    </section>
+
+    <section id="marketplace">
+        <div class="card">
+            <h2>🛒 Доступные предметы</h2>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                <input type="text" id="search-input" placeholder="Поиск по названию..." style="flex: 1;">
+                <button id="search-button" class="btn" style="width: 44px; height: 44px; padding: 0; font-size: 18px; border-radius: 50%;">🔍</button>
+            </div>
+            <div id="items-list"></div>
+        </div>
+    </section>
+
+    <section id="profile">
+        <div class="card">
+            <h2>👤 Твой профиль</h2>
+            <p>Приглашено друзей: <strong id="referrals">0</strong></p>
+            <p>Полученные предметы:</p>
+            <ul id="items"></ul>
+            <p>Steam профиль: <span id="steam-profile" style="text-overflow: ellipsis">Не привязан</span></p>
+            <p>Trade link: <span id="trade-link" style="text-overflow: ellipsis">Не привязан</span></p>
+
+
+            <h3 style="margin-top:30px;">Привязать Steam</h3>
+            <input id="profile-input" placeholder="Ссылка на Steam профиль">
+            <input id="trade-input" placeholder="Trade offer URL">
+            <button class="btn" onclick="bindSteam()" style="margin-top: 15px">Привязать</button>
+        </div>
+    </section>
+
+    <script src="app.js"></script>
 </body>
 </html>
