@@ -35,12 +35,12 @@ xpanda_headers = {
     "Content-Type": "application/json"
 }
 
-# Lifespan-обработчик вместо on_event
+# Lifespan для установки/удаления webhook
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: установка webhook
     webhook_url = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/webhook"
-    webhook_secret = os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
+    webhook_secret = os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token-64-symbols")
 
     await bot.set_webhook(
         url=webhook_url,
@@ -49,7 +49,8 @@ async def lifespan(app: FastAPI):
     )
     print(f"Webhook установлен: {webhook_url}")
 
-    yield  # здесь приложение работает
+    # Запуск приложения
+    yield
 
     # Shutdown: удаление webhook
     await bot.delete_webhook(drop_pending_updates=True)
@@ -208,11 +209,11 @@ async def create_deal(data: dict):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Deal creation failed: {str(e)}")
         
-# Регистрация webhook-роутера
+# Регистрация webhook-роутера (вне lifespan)
 webhook_handler = SimpleRequestHandler(
     dispatcher=dp,
     bot=bot,
-    secret_token=os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token")
+    secret_token=os.getenv("WEBHOOK_SECRET", "your-very-long-secret-token-64-symbols")
 )
 webhook_handler.register(app, path="/webhook")
 setup_application(app, dp, bot=bot)
