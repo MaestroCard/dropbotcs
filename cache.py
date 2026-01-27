@@ -77,7 +77,9 @@ class ItemsCache:
 
     async def update(self):
         while True:
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] → Обновление кэша предметов...")
+            if self._cache_not_getted:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] → Обновление кэша предметов...")
+                
 
             # Получаем IP сервера один раз (4-й способ)
             if not self._ip_logged:
@@ -95,9 +97,11 @@ class ItemsCache:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, headers=xpanda_headers, timeout=45) as resp:
                         if resp.status != 200:
-                            print(f"   Ошибка: статус {resp.status}")
+                            if self._cache_not_getted:
+                                print(f"   Ошибка: статус {resp.status}")
+                                self._cache_not_getted = False
                             continue
-
+                        self._cache_not_getted = True
                         data = await resp.json()
                         items_list = data.get("items", [])
 
