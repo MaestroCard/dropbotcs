@@ -59,7 +59,10 @@ async def get_user(telegram_id: int, session: AsyncSession = None) -> User | Non
         result = await sess.execute(stmt)
         return result.scalar_one_or_none()
 
-async def add_user(telegram_id: int, referred_by: int = None) -> User:
+# ────────────────────────────────────────────────
+# Изменено: теперь НЕ принимает referred_by
+# ────────────────────────────────────────────────
+async def add_user(telegram_id: int) -> User:
     async with async_session() as session:
         async with session.begin():
             stmt = select(User).where(User.telegram_id == telegram_id)
@@ -70,21 +73,16 @@ async def add_user(telegram_id: int, referred_by: int = None) -> User:
                 print(f"Пользователь {telegram_id} уже существует")
                 return user
 
-            # Блокировка самореферала
-            if referred_by == telegram_id:
-                print(f"[WARNING] Самореферал от {telegram_id} — игнорируем")
-                referred_by = None
-
-            user = User(
-                telegram_id=telegram_id,
-                referred_by=referred_by
-            )
+            user = User(telegram_id=telegram_id)  # referred_by остаётся None
             session.add(user)
 
-        # Коммит уже произошёл в async with begin(), но для надёжности
-        print(f"Добавлен новый пользователь: {telegram_id}, приглашён {referred_by}")
+        print(f"Добавлен новый пользователь: {telegram_id}")
         return user
 
+# ────────────────────────────────────────────────
+# add_referral — остаётся почти без изменений,
+# но теперь именно он отвечает за установку referred_by
+# ────────────────────────────────────────────────
 async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
     if referrer_telegram_id == invited_telegram_id:
         print(f"[WARNING] Самореферал {invited_telegram_id} — игнорируем")
@@ -92,7 +90,6 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
 
     async with async_session() as session:
         async with session.begin():
-            # Используем select вместо session.get
             stmt_inviter = select(User).where(User.telegram_id == referrer_telegram_id)
             result_inviter = await session.execute(stmt_inviter)
             inviter = result_inviter.scalar_one_or_none()
@@ -113,11 +110,10 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
                     print(f"[WARNING] Конфликт: {invited_telegram_id} уже приглашён {invited.referred_by}, а теперь пытаются {referrer_telegram_id}")
                     return
 
-            # Изменяем данные
+            # Устанавливаем связь и увеличиваем счётчик
             invited.referred_by = referrer_telegram_id
             inviter.referrals += 1
 
-            # Явно обновляем объекты в сессии (на всякий случай)
             await session.refresh(inviter)
             await session.refresh(invited)
 

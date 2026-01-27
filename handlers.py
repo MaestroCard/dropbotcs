@@ -54,23 +54,24 @@ async def start_handler(message: types.Message):
     ref_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
 
     user = await get_user(message.from_user.id)
-    created = False
-    if not user:
-        user = await add_user(message.from_user.id, ref_id)
-        created = True
+    is_new_user = user is None
+
+    if is_new_user:
+        # Создаём без referred_by
+        user = await add_user(message.from_user.id)  # ← без ref_id!
 
     print(f"[DEBUG START] User {user.telegram_id}: "
           f"referrals = {user.referrals}, "
           f"has_gift = {user.has_gift}, "
           f"кэш предметов = {len(cache.all_items)} шт")
 
-    if ref_id and created:
-        # Передаём ID приглашённого (message.from_user.id)
+    if ref_id and is_new_user:
+        # Только для действительно нового пользователя
         await add_referral(ref_id, message.from_user.id)
 
         # Проверяем пригласившего после добавления
         inviter = await get_user(ref_id)
-        if inviter and inviter.referrals >= 3 and not inviter.has_gift:
+        if inviter and inviter.referrals == 3 and not inviter.has_gift:
             markup = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")]
             ])
