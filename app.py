@@ -168,6 +168,7 @@ async def create_invoice(data: dict):
     user_id = data.get('user_id')
     price_stars = data.get('price_stars')
 
+    # Проверка обязательных полей
     missing = []
     if not item_id: missing.append('item_id')
     if not product_id: missing.append('product_id')
@@ -177,6 +178,13 @@ async def create_invoice(data: dict):
     if missing:
         print("[DEBUG INVOICE] Отсутствуют поля:", missing)
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
+
+    # Проверка trade_link
+    user = await get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.trade_link:
+        raise HTTPException(status_code=400, detail="Trade link не привязан. Привяжите trade link в профиле перед покупкой.")
 
     item_name = f"Предмет ID {item_id}"
 

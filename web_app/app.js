@@ -42,6 +42,29 @@ function switchTab(tabId) {
     }
 }
 
+// Функция проверки формата trade-ссылки
+function isValidTradeLink(url) {
+    if (!url) return false;
+
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname !== 'steamcommunity.com') return false;
+        if (!parsed.pathname.startsWith('/tradeoffer/new/')) return false;
+
+        const params = new URLSearchParams(parsed.search);
+        const partner = params.get('partner');
+        const token = params.get('token');
+
+        if (!partner || !token) return false;
+        if (!/^\d+$/.test(partner)) return false;  // partner — только цифры
+        if (!/^[a-zA-Z0-9_-]+$/.test(token)) return false;  // token — буквы, цифры, -, _
+
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 // Загрузка профиля
 async function loadProfile() {
     try {
@@ -144,16 +167,16 @@ async function fetchItems() {
                 const div = document.createElement('div');
                 div.className = 'item';
                 div.innerHTML = `
-                    <img src="${item.image}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/80x60?text=Item'">
-                    <div style="flex: 1;">  <!-- Занимает пространство для ровности -->
-                        <h3>${item.name}</h3>
-                        <div class="price-container">  <!-- Ровная строка для цены -->
+                    <img src="$$   {item.image || 'https://via.placeholder.com/80x60?text=No+Image'}" alt="   $${item.name}">
+                    <div class="item-info">
+                        <strong>${item.name}</strong>
+                        <div class="price-container">
                             <span class="price">${item.price_stars} ⭐</span>
-                            <span class="price-usd">(${item.price_usd}$)</span>
+                            <span class="price-usd">≈ $$  {item.price_usd || '?'}</span>
                         </div>
                         <p>В наличии: ${item.quantity || 'много'}</p>
                     </div>
-                    <button class="btn" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}')">Купить</button>
+                    <button class="btn" onclick="buyItem(${item.id},   $$ {item.price_stars}, ' $${item.name.replace(/'/g, "\\'")}', '${item.product_id || ''}')">Купить</button>
                 `;
                 list.appendChild(div);
             });
@@ -214,9 +237,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// Покупка (теперь с product_id)
+// Покупка (теперь с проверкой trade_link)
 async function buyItem(itemId, priceStars, itemName, productId = '') {
     if (!priceStars || priceStars <= 0) return alert('Цена не указана');
+
+    // Проверяем, привязан ли trade link (можно запросить из /api/profile)
+    const profileResponse = await fetch(`${backendUrl}/api/profile/${userId}`);
+    const profileData = await profileResponse.json();
+
+    if (!profileData.trade_link || profileData.trade_link === 'Не привязан') {
+        alert('Нельзя купить — сначала привяжите trade link в профиле!');
+        switchTab('profile'); // переключаем на вкладку профиля
+        return;
+    }
 
     try {
         const body = {
@@ -224,14 +257,7 @@ async function buyItem(itemId, priceStars, itemName, productId = '') {
             user_id: userId,
             price_stars: priceStars
         };
-        if (productId) {
-            body.product_id = productId;  // ← обязательно для Xpanda
-        } else {
-            console.warn('[BUY] product_id не найден, fallback на name');
-            body.product_id = itemName;
-        }
-
-        console.log('[BUY] Отправляемые данные:', body);  // ← отладка в консоль браузера
+        if (productId) body.product_id = productId;
 
         const response = await fetch(`${backendUrl}/api/create_invoice`, {
             method: 'POST',
@@ -259,12 +285,18 @@ async function buyItem(itemId, priceStars, itemName, productId = '') {
     }
 }
 
-// Привязка Steam
+// Привязка Steam — с проверкой
 async function bindSteam() {
     const profile = document.getElementById('profile-input').value.trim();
     const trade = document.getElementById('trade-input').value.trim();
 
     if (!profile || !trade) return alert('Заполните оба поля!');
+
+    // Проверка trade-ссылки
+    if (!isValidTradeLink(trade)) {
+        alert('Неверный формат trade-ссылки!\n\nДолжна быть вида:\nhttps://steamcommunity.com/tradeoffer/new/?partner=XXXX&token=XXXXXX');
+        return;
+    }
 
     try {
         const response = await fetch(`${backendUrl}/api/bind/${userId}`, {
@@ -275,7 +307,7 @@ async function bindSteam() {
 
         if (response.ok) {
             alert('Steam успешно привязан!');
-            loadProfile(); // обновляем профиль после привязки
+            loadProfile(); // обновляем профиль
             document.getElementById('profile-input').value = '';
             document.getElementById('trade-input').value = '';
         } else {

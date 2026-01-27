@@ -94,21 +94,40 @@
         }
         .item {
             display: flex;
+            flex-direction: row; /* горизонтально */
             align-items: center;
-            justify-content: space-between; /* ← Ровное распределение: слева контент, справа кнопка */
             background: #1e293b;
             border-radius: 12px;
             padding: 15px;
             margin-bottom: 15px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            gap: 16px;                     /* ← Равномерные отступы между элементами */
-            flex-wrap: nowrap;             /* ← Не переносит на новую строку */
+            position: relative; /* для позиционирования кнопки */
         }
+
         .item img {
             width: 80px;
             height: 60px;
             object-fit: cover;
             border-radius: 8px;
+            margin-right: 15px;
+        }
+
+        .item-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+        }
+
+        .item button.btn {
+            width: 120px; /* фиксированная ширина, чтобы не вылезала */
+            height: 44px; /* фиксированная высота */
+            margin-left: auto; /* прижимает кнопку к правому краю */
+            flex-shrink: 0; /* не сжимается */
+            font-size: 14px; /* уменьшить текст, если нужно */
+            padding: 0 12px; /* уменьшить внутренние отступы */
+            white-space: nowrap; /* текст в одну строку */
         }
         .item h3 {
             font-size: 16px;
@@ -189,7 +208,7 @@
             <h2>🛒 Доступные предметы</h2>
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
                 <input type="text" id="search-input" placeholder="Поиск по названию..." style="flex: 1;">
-                <button id="search-button" class="btn" style="width: 44px; height: 44px; padding: 0; font-size: 18px; border-radius: 50%;">🔍</button>
+                <button id="search-button" class="btn" style="width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: 18px; border-radius: 50%;">🔍</button>
             </div>
             <div id="items-list"></div>
         </div>
