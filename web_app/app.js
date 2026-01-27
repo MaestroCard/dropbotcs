@@ -80,13 +80,13 @@ async function loadProfile() {
 
         document.getElementById('referrals').innerText = data.referrals || 0;
 
-        const itemsList = document.getElementById('items');
-        itemsList.innerHTML = '';
-        (data.items || []).forEach(item => {
-            const li = document.createElement('li');
-            li.innerText = `${item.name} (получен: ${item.date || 'неизвестно'})`;
-            itemsList.appendChild(li);
-        });
+        // const itemsList = document.getElementById('items');
+        // itemsList.innerHTML = '';
+        // (data.items || []).forEach(item => {
+        //     const li = document.createElement('li');
+        //     li.innerText = `${item.name} (получен: ${item.date || 'неизвестно'})`;
+        //     itemsList.appendChild(li);
+        // });
 
         document.getElementById('steam-profile').innerText = data.steam_profile || 'Не привязан';
         document.getElementById('trade-link').innerText = data.trade_link || 'Не привязан';
@@ -104,8 +104,12 @@ async function loadProfile() {
         document.getElementById('referrals').innerText = 'Ошибка';
         document.getElementById('steam-profile').innerText = 'Ошибка';
         document.getElementById('trade-link').innerText = 'Ошибка';
-        document.getElementById('items').innerHTML = '<p style="color:#ef4444;">Ошибка загрузки профиля: ' + error.message + '</p>';
+        // document.getElementById('items').innerHTML = '<p style="color:#ef4444;">Ошибка загрузки профиля: ' + error.message + '</p>';
     }
+}
+
+function refreshProfile() {
+    loadProfile();
 }
 
 // Получение подарка
