@@ -90,50 +90,25 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
 
     async with async_session() as session:
         async with session.begin():
-            # Получаем объекты
             stmt_inviter = select(User).where(User.telegram_id == referrer_telegram_id)
-            result_inviter = await session.execute(stmt_inviter)
-            inviter = result_inviter.scalar_one_or_none()
+            inviter = (await session.execute(stmt_inviter)).scalar_one_or_none()
 
             stmt_invited = select(User).where(User.telegram_id == invited_telegram_id)
-            result_invited = await session.execute(stmt_invited)
-            invited = result_invited.scalar_one_or_none()
+            invited = (await session.execute(stmt_invited)).scalar_one_or_none()
 
             if not inviter or not invited:
                 print(f"Не найден inviter ({referrer_telegram_id}) или invited ({invited_telegram_id})")
                 return
 
             if invited.referred_by is not None:
-                if invited.referred_by == referrer_telegram_id:
-                    print(f"[INFO] Повторное приглашение {invited_telegram_id} от {referrer_telegram_id} — игнорируем")
-                    return
-                else:
-                    print(f"[WARNING] Конфликт: {invited_telegram_id} уже приглашён {invited.referred_by}, а теперь пытаются {referrer_telegram_id}")
-                    return
+                print(f"[INFO] referred_by уже установлен ({invited.referred_by}) — пропускаем")
+                return
 
-            # Самое важное — убеждаемся, что объекты в сессии
-            inviter = await session.merge(inviter)   # если detached — прикрепляем
-            invited = await session.merge(invited)
-
-            # Изменяем
             invited.referred_by = referrer_telegram_id
-            old_referrals = inviter.referrals
-            inviter.referrals = old_referrals + 1   # явно, без += (иногда ORM глючит)
+            inviter.referrals += 1
 
-            # Логируем перед сохранением
-            print(f"[BEFORE COMMIT] referrals будет изменён с {old_referrals} на {inviter.referrals}")
-
-            # Принудительно сохраняем изменения
-            await session.flush()   # отправляем изменения в БД, но транзакция ещё открыта
-
-            # Проверяем после flush
-            await session.refresh(inviter, attribute_names=["referrals"])
-            print(f"[AFTER FLUSH] referrals в объекте: {inviter.referrals}")
-
-        # Здесь сессия коммитится автоматически (async with begin())
-        # Финальный лог после коммита
-        print(f"[SUCCESS] Добавлен реферал: {invited_telegram_id} → {referrer_telegram_id}")
-        print(f"У {referrer_telegram_id} теперь referrals = {inviter.referrals} (после коммита)")
+            print(f"[SUCCESS] Добавлен реферал: {invited_telegram_id} → {referrer_telegram_id}")
+            print(f"У {referrer_telegram_id} теперь referrals = {inviter.referrals}")
 
 async def update_steam(telegram_id: int, profile: str, trade_link: str):
     async with async_session() as session:
