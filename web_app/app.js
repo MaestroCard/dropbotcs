@@ -167,16 +167,16 @@ async function fetchItems() {
                 const div = document.createElement('div');
                 div.className = 'item';
                 div.innerHTML = `
-                    <img src="$$   {item.image || 'https://via.placeholder.com/80x60?text=No+Image'}" alt="   $${item.name}">
-                    <div class="item-info">
-                        <strong>${item.name}</strong>
-                        <div class="price-container">
+                    <img src="${item.image}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/80x60?text=Item'">
+                    <div style="flex: 1;">  <!-- Занимает пространство для ровности -->
+                        <h3>${item.name}</h3>
+                        <div class="price-container">  <!-- Ровная строка для цены -->
                             <span class="price">${item.price_stars} ⭐</span>
-                            <span class="price-usd">≈ $$  {item.price_usd || '?'}</span>
+                            <span class="price-usd">(${item.price_usd}$)</span>
                         </div>
                         <p>В наличии: ${item.quantity || 'много'}</p>
                     </div>
-                    <button class="btn" onclick="buyItem(${item.id},   $$ {item.price_stars}, ' $${item.name.replace(/'/g, "\\'")}', '${item.product_id || ''}')">Купить</button>
+                    <button class="btn" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}')">Купить</button>
                 `;
                 list.appendChild(div);
             });

@@ -105,8 +105,8 @@
         }
 
         .item img {
-            width: 80px;
-            height: 60px;
+            width: 70px;
+            height: 50px;
             object-fit: cover;
             border-radius: 8px;
             margin-right: 15px;
@@ -121,16 +121,16 @@
         }
 
         .item button.btn {
-            width: 120px; /* фиксированная ширина, чтобы не вылезала */
+            width: 30%; /* фиксированная ширина, чтобы не вылезала */
             height: 44px; /* фиксированная высота */
             margin-left: auto; /* прижимает кнопку к правому краю */
             flex-shrink: 0; /* не сжимается */
             font-size: 14px; /* уменьшить текст, если нужно */
-            padding: 0 12px; /* уменьшить внутренние отступы */
+            /*padding: 0 12px; */
             white-space: nowrap; /* текст в одну строку */
         }
         .item h3 {
-            font-size: 16px;
+            font-size: 14px;
             margin: 0 0 4px 0;
             white-space: nowrap;
             overflow: hidden;
@@ -144,8 +144,9 @@
         }
         .price-container {
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
-            gap: 8px;                      /* ← Ровная строка для цены и USD */
+           /* gap: 8px;                      /* ← Ровная строка для цены и USD */
         }
         .price {
             color: #fcd34d;                /* ← Цвет для звёздочек */
