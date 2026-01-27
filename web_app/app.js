@@ -49,7 +49,6 @@ function isValidTradeLink(url) {
     try {
         const parsed = new URL(url);
 
-        // Обязательно steamcommunity.com и правильный путь
         if (parsed.hostname !== 'steamcommunity.com' &&
             parsed.hostname !== 'www.steamcommunity.com') {
             return false;
@@ -64,34 +63,28 @@ function isValidTradeLink(url) {
         const partner = params.get('partner');
         const token   = params.get('token');
 
-        // Проверяем наличие обоих параметров
         if (!partner || !token) {
             console.warn('Нет partner или token в trade-ссылке');
             return false;
         }
 
-        // partner — только цифры
         if (!/^\d+$/.test(partner)) {
             console.warn('partner не состоит только из цифр:', partner);
             return false;
         }
 
-        // token — обычно base64-подобный, но Steam допускает: буквы, цифры, -, _, иногда +
         if (!/^[a-zA-Z0-9_-]+$/.test(token)) {
-            // Более мягкая проверка — если есть +, иногда бывает
             if (!/^[a-zA-Z0-9_+\-]+$/.test(token)) {
                 console.warn('Недопустимые символы в token:', token);
                 return false;
             }
         }
 
-        // Длина token обычно 8–11 символов, но не обязательно жёстко проверять
         if (token.length < 6 || token.length > 20) {
             console.warn('Странная длина token:', token.length);
-            // Можно закомментировать, если не хотите строгость
         }
 
-        return true;  // или return { partner, token } — если нужно
+        return true;
 
     } catch (e) {
         console.error('Ошибка парсинга URL:', e);
@@ -103,42 +96,35 @@ function isValidTradeLink(url) {
 async function loadProfile() {
     try {
         const response = await fetch(`${backendUrl}/api/profile/${userId}`);
+        
         if (!response.ok) {
             if (response.status === 404) {
-                console.error('User not found in DB - should be created automatically now');
+                document.getElementById('profile').innerHTML = `
+                    <div class="card" style="text-align:center; padding:30px;">
+                        <h2>Аккаунт не активирован</h2>
+                        <p style="font-size:16px; margin:20px 0;">
+                            Сначала напишите боту команду <strong>/start</strong>
+                        </p>
+                        <button class="btn" onclick="webApp.close()">Закрыть</button>
+                    </div>
+                `;
+                return;
             }
             throw new Error(`HTTP ${response.status}: ${await response.text()}`);
         }
+
         const data = await response.json();
-        console.log('[PROFILE] Loaded data:', data);  // Для отладки
+        console.log('[PROFILE] Loaded data:', data);
 
         document.getElementById('referrals').innerText = data.referrals || 0;
 
-        // const itemsList = document.getElementById('items');
-        // itemsList.innerHTML = '';
-        // (data.items || []).forEach(item => {
-        //     const li = document.createElement('li');
-        //     li.innerText = `${item.name} (получен: ${item.date || 'неизвестно'})`;
-        //     itemsList.appendChild(li);
-        // });
-
         document.getElementById('steam-profile').innerText = data.steam_profile || 'Не привязан';
         document.getElementById('trade-link').innerText = data.trade_link || 'Не привязан';
-
-        // Показываем кнопку подарка, если он есть
-        // const giftSection = document.getElementById('gift-section');
-        // if (data.has_gift) {
-        //     giftSection.innerHTML = '<button class="btn" onclick="claimGift()">Забрать подарок 🎁</button>';
-        // } else {
-        //     giftSection.innerHTML = '';
-        // }
     } catch (error) {
         console.error('Error loading profile:', error);
-        // Показываем ошибку в UI (не только в items)
         document.getElementById('referrals').innerText = 'Ошибка';
         document.getElementById('steam-profile').innerText = 'Ошибка';
         document.getElementById('trade-link').innerText = 'Ошибка';
-        // document.getElementById('items').innerHTML = '<p style="color:#ef4444;">Ошибка загрузки профиля: ' + error.message + '</p>';
     }
 }
 
@@ -156,7 +142,7 @@ async function claimGift() {
 
         if (response.ok) {
             alert('Подарок успешно забран!');
-            loadProfile(); // обновляем профиль
+            loadProfile();
         } else {
             const err = await response.text();
             alert('Ошибка при получении подарка: ' + err);
@@ -168,10 +154,31 @@ async function claimGift() {
 }
 
 // Реферальная ссылка
-function generateRefLink() {
-    const refLink = `t.me/${botUsername}?start=${userId}`;
+// Реферальная ссылка
+async function generateRefLink() {
     const refElement = document.getElementById('ref-link');
-    if (refElement) refElement.innerText = refLink;
+    if (!refElement) return;
+
+    try {
+        const response = await fetch(`${backendUrl}/api/profile/${userId}`);
+        
+        if (!response.ok) {
+            if (response.status === 404) {
+                refElement.innerText = "Сначала напишите боту /start";
+                refElement.style.color = "#ef4444";
+                return;
+            }
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        // Если профиль существует — генерируем нормальную ссылку
+        const refLink = `t.me/${botUsername}?start=${userId}`;
+        refElement.innerText = refLink;
+    } catch (error) {
+        console.error('Ошибка при генерации реф-ссылки:', error);
+        refElement.innerText = "Ошибка. Напишите /start боту";
+        refElement.style.color = "#ef4444";
+    }
 }
 
 function shareLink() {
@@ -179,7 +186,7 @@ function shareLink() {
     if (refText) webApp.switchInlineQuery(`Пригласи друга в CS2 Marketplace и получи скин бесплатно! ${refText}`);
 }
 
-// Загрузка предметов (изменённая функция для ровности и компактных кнопок)
+// Загрузка предметов
 async function fetchItems() {
     if (isLoading || !hasMore) return;
     isLoading = true;
@@ -215,9 +222,9 @@ async function fetchItems() {
                 div.className = 'item';
                 div.innerHTML = `
                     <img src="${item.image}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/80x60?text=Item'">
-                    <div style="flex: 1;">  <!-- Занимает пространство для ровности -->
+                    <div style="flex: 1;">
                         <h3>${item.name}</h3>
-                        <div class="price-container">  <!-- Ровная строка для цены -->
+                        <div class="price-container">
                             <span class="price">${item.price_stars} ⭐</span>
                             <span class="price-usd">(${item.price_usd}$)</span>
                         </div>
@@ -284,17 +291,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// Покупка (теперь с проверкой trade_link)
+// Покупка
 async function buyItem(itemId, priceStars, itemName, productId = '') {
     if (!priceStars || priceStars <= 0) return alert('Цена не указана');
 
-    // Проверяем, привязан ли trade link (можно запросить из /api/profile)
     const profileResponse = await fetch(`${backendUrl}/api/profile/${userId}`);
     const profileData = await profileResponse.json();
 
     if (!profileData.trade_link || profileData.trade_link === 'Не привязан') {
         alert('Нельзя купить — сначала привяжите trade link в профиле!');
-        switchTab('profile'); // переключаем на вкладку профиля
+        switchTab('profile');
         return;
     }
 
@@ -321,7 +327,7 @@ async function buyItem(itemId, priceStars, itemName, productId = '') {
         webApp.openInvoice(data.invoice_link, (status) => {
             if (status === 'paid') {
                 alert('⭐ Оплата прошла успешно! Предмет добавлен в профиль.');
-                loadProfile(); // обновляем профиль
+                loadProfile();
             } else if (status === 'failed' || status === 'cancelled') {
                 alert('Оплата не удалась.');
             }
@@ -332,14 +338,13 @@ async function buyItem(itemId, priceStars, itemName, productId = '') {
     }
 }
 
-// Привязка Steam — с проверкой
+// Привязка Steam
 async function bindSteam() {
     const profile = document.getElementById('profile-input').value.trim();
     const trade = document.getElementById('trade-input').value.trim();
 
     if (!profile || !trade) return alert('Заполните оба поля!');
 
-    // Проверка trade-ссылки
     if (!isValidTradeLink(trade)) {
         alert('Неверный формат trade-ссылки!\n\nДолжна быть вида:\nhttps://steamcommunity.com/tradeoffer/new/?partner=XXXX&token=XXXXXX');
         return;
@@ -354,7 +359,7 @@ async function bindSteam() {
 
         if (response.ok) {
             alert('Steam успешно привязан!');
-            loadProfile(); // обновляем профиль
+            loadProfile();
             document.getElementById('profile-input').value = '';
             document.getElementById('trade-input').value = '';
         } else {
@@ -374,4 +379,3 @@ switchTab('landing');
 
 console.log("Мини-приложение запущено");
 console.log("Версия app.js: 2026-01-23-v4");
-// alert("Версия v4 загружена!");

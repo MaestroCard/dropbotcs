@@ -99,7 +99,12 @@ async def telegram_webhook(
 async def get_profile(telegram_id: int):
     user = await get_user(telegram_id)
     if not user:
-        user = await add_user(telegram_id)  # Создаём, если не существует (referred_by=None)
+        # Больше НЕ создаём пользователя автоматически
+        raise HTTPException(
+            status_code=404,
+            detail="Пользователь не найден. Напишите боту /start, чтобы зарегистрироваться."
+        )
+    
     items = json.loads(user.items_received) if user.items_received else []
     return {
         "referrals": user.referrals,
