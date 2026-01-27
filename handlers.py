@@ -89,7 +89,7 @@ async def start_handler(message: types.Message):
 
     # остальной код без изменений
     markup = main_menu()
-    await message.answer("Добро пожаловать в CS2 Marketplace! ...", reply_markup=markup)
+    await message.answer("Добро пожаловать в CS2 Marketplace! Откройте приложение:", reply_markup=markup)
 
 async def claim_gift_callback(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
