@@ -85,38 +85,34 @@ async def add_user(telegram_id: int, referred_by: int = None) -> User:
         return user
 
 async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
+    if referrer_telegram_id == invited_telegram_id:
+        print(f"[WARNING] Самореферал {invited_telegram_id} — игнорируем")
+        return
+
     async with async_session() as session:
         async with session.begin():
-            stmt_inviter = select(User).where(User.telegram_id == referrer_telegram_id)
-            result_inviter = await session.execute(stmt_inviter)
-            inviter = result_inviter.scalar_one_or_none()
+            inviter = await session.get(User, referrer_telegram_id)  # более надёжно, чем select + scalar
+            invited = await session.get(User, invited_telegram_id)
 
-            if not inviter:
-                print(f"Пригласивший {referrer_telegram_id} не найден")
-                return
-
-            stmt_invited = select(User).where(User.telegram_id == invited_telegram_id)
-            result_invited = await session.execute(stmt_invited)
-            invited = result_invited.scalar_one_or_none()
-
-            if not invited:
-                print(f"Приглашённый {invited_telegram_id} не найден")
-                return
-
-            if invited_telegram_id == referrer_telegram_id:
-                print(f"[WARNING] Самореферал {invited_telegram_id} от {referrer_telegram_id} — игнорируем")
+            if not inviter or not invited:
+                print(f"Не найден inviter ({referrer_telegram_id}) или invited ({invited_telegram_id})")
                 return
 
             if invited.referred_by is not None:
                 if invited.referred_by == referrer_telegram_id:
-                    print(f"[INFO] Пользователь {invited_telegram_id} уже приглашён {referrer_telegram_id} — повторно не засчитываем")
+                    # Уже приглашён именно этим человеком — ничего не делаем, но можно логировать
+                    print(f"[INFO] Повторное приглашение {invited_telegram_id} от {referrer_telegram_id} — игнорируем")
+                    return
                 else:
-                    print(f"[WARNING] Пользователь {invited_telegram_id} уже приглашён другим ({invited.referred_by}) — не засчитываем")
-                return
+                    print(f"[WARNING] Конфликт: {invited_telegram_id} уже приглашён {invited.referred_by}, а теперь пытаются {referrer_telegram_id}")
+                    return  # или raise, если хочешь запретить
 
+            # Только здесь увеличиваем
             invited.referred_by = referrer_telegram_id
             inviter.referrals += 1
-            print(f"У пользователя {referrer_telegram_id} теперь {inviter.referrals} рефералов (добавлен {invited_telegram_id})")
+
+            print(f"[SUCCESS] Добавлен реферал: {invited_telegram_id} → {referrer_telegram_id}")
+            print(f"У {referrer_telegram_id} теперь referrals = {inviter.referrals}")
 
 async def update_steam(telegram_id: int, profile: str, trade_link: str):
     async with async_session() as session:

@@ -54,15 +54,17 @@ async def start_handler(message: types.Message):
     ref_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
 
     user = await get_user(message.from_user.id)
+    created = False
     if not user:
         user = await add_user(message.from_user.id, ref_id)
+        created = True
 
     print(f"[DEBUG START] User {user.telegram_id}: "
           f"referrals = {user.referrals}, "
           f"has_gift = {user.has_gift}, "
           f"кэш предметов = {len(cache.all_items)} шт")
 
-    if ref_id:
+    if ref_id and created:
         # Передаём ID приглашённого (message.from_user.id)
         await add_referral(ref_id, message.from_user.id)
 
