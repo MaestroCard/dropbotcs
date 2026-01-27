@@ -20,6 +20,7 @@ xpanda_headers = {
 class ItemsCache:
     _instance = None
     _ip_logged = False  # флаг, чтобы логировать IP только один раз
+    _cache_not_getted = True
 
     def __new__(cls):
         if cls._instance is None:
@@ -137,10 +138,13 @@ class ItemsCache:
                         self.all_items = result
                         self.cache_timestamp = datetime.now()
                         print(f"   Кэш обновлён! {len(result)} предметов (пропущено: {skipped})")
+                        self._cache_not_getted = True
                         print(f"   Пример первого предмета: {result[0] if result else 'пусто'}")
 
             except Exception as e:
-                print(f"   Ошибка обновления кэша: {type(e).__name__}: {str(e)}")
+                if self._cache_not_getted:
+                    print(f"   Ошибка обновления кэша: {type(e).__name__}: {str(e)}")
+                    self._cache_not_getted = False
 
             await asyncio.sleep(self.CACHE_UPDATE_INTERVAL)
 

@@ -134,26 +134,44 @@ def is_valid_trade_link(url: str) -> bool:
         return False
 
     try:
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import urlparse, parse_qs, unquote
+
+        # Раскодируем HTML-сущности (&amp; → &)
+        url = unquote(url)
+
         parsed = urlparse(url)
-        if parsed.hostname != 'steamcommunity.com':
+
+        # Разрешаем www. и без него
+        if parsed.hostname not in ('steamcommunity.com', 'www.steamcommunity.com'):
             return False
-        if not parsed.pathname.startswith('/tradeoffer/new/'):
+
+        if not parsed.path.startswith('/tradeoffer/new/'):
             return False
 
         params = parse_qs(parsed.query)
+
         partner = params.get('partner', [None])[0]
-        token = params.get('token', [None])[0]
+        token   = params.get('token',   [None])[0]
 
         if not partner or not token:
             return False
+
         if not partner.isdigit():
             return False
-        if not all(c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in token):
+
+        # Token обычно состоит из букв, цифр, _, -, иногда +
+        allowed_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-+')
+        if not all(c in allowed_chars for c in token):
             return False
 
+        # Можно добавить длину, если хочешь строгость
+        # if len(token) < 6 or len(token) > 20:
+        #     return False
+
         return True
-    except Exception:
+
+    except Exception as e:
+        print(e)
         return False
 
 @app.post("/api/claim_gift/{telegram_id}")
