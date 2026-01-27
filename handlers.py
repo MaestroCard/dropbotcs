@@ -50,7 +50,6 @@ def parse_trade_link(trade_link: str) -> dict | None:
 
 
 async def start_handler(message: types.Message):
-    
     print(f"[START] Начало обработки от {message.from_user.id}, текст: {message.text}")
     args = message.text.split()
     ref_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
@@ -59,34 +58,38 @@ async def start_handler(message: types.Message):
     is_new_user = user is None
 
     if is_new_user:
-        # Создаём без referred_by
-        user = await add_user(message.from_user.id)  # ← без ref_id!
+        user = await add_user(message.from_user.id)
 
-    print(f"[DEBUG START] User {user.telegram_id}: "
-        f"referrals = {user.referrals}, "
-        f"has_gift = {user.has_gift}, "
-        f"кэш предметов = {len(cache.all_items)} шт")
+    print(f"[DEBUG START] User {user.telegram_id}: referrals = {user.referrals}, has_gift = {user.has_gift}")
 
     if ref_id and is_new_user:
-        # Только для действительно нового пользователя
-        await add_referral(ref_id, message.from_user.id)
+        try:
+            print(f"[REFERRAL] Пытаемся добавить реферал {message.from_user.id} → от {ref_id}")
+            await add_referral(ref_id, message.from_user.id)
+            print("[REFERRAL] add_referral прошёл без исключения")
 
-        # Проверяем пригласившего после добавления
-        inviter = await get_user(ref_id)
-        if inviter and inviter.referrals == 3 and not inviter.has_gift:
-            markup = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")]
-            ])
+            inviter = await get_user(ref_id)
+            if inviter:
+                print(f"[REFERRAL] У инвайтера {ref_id} referrals теперь = {inviter.referrals}")
+                if inviter.referrals == 3 and not inviter.has_gift:
+                    print("[REFERRAL] Отправляем уведомление о подарке инвайтеру")
+                    markup = InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
+                    ]])
+                    await message.bot.send_message(
+                        ref_id,
+                        f"🎉 Поздравляем! ... {inviter.referrals} рефералов!\n...",
+                        reply_markup=markup
+                    )
+                    print("[REFERRAL] Уведомление отправлено")
+        except Exception as e:
+            print(f"[REFERRAL CRASH] Ошибка при обработке реферала: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()   # покажет полный стек в консоль / логи railway
 
-            await message.bot.send_message(
-                ref_id,
-                f"🎉 Поздравляем! Один из ваших рефералов присоединился — у вас теперь {inviter.referrals} рефералов!\n"
-                f"Вы получаете подарок. Нажмите кнопку ниже, чтобы получить рандомный дешёвый скин в Steam.",
-                reply_markup=markup
-            )
-
+    # остальной код без изменений
     markup = main_menu()
-    await message.answer("Добро пожаловать в CS2 Marketplace! Откройте приложение:", reply_markup=markup)
+    await message.answer("Добро пожаловать в CS2 Marketplace! ...", reply_markup=markup)
 
 async def claim_gift_callback(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
