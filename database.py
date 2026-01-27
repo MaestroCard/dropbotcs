@@ -81,6 +81,7 @@ async def add_user(telegram_id: int, referred_by: int = None) -> User:
             )
             session.add(user)
 
+        # Коммит уже произошёл в async with begin(), но для надёжности
         print(f"Добавлен новый пользователь: {telegram_id}, приглашён {referred_by}")
         return user
 
@@ -91,8 +92,14 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
 
     async with async_session() as session:
         async with session.begin():
-            inviter = await session.get(User, referrer_telegram_id)  # более надёжно, чем select + scalar
-            invited = await session.get(User, invited_telegram_id)
+            # Используем select вместо session.get
+            stmt_inviter = select(User).where(User.telegram_id == referrer_telegram_id)
+            result_inviter = await session.execute(stmt_inviter)
+            inviter = result_inviter.scalar_one_or_none()
+
+            stmt_invited = select(User).where(User.telegram_id == invited_telegram_id)
+            result_invited = await session.execute(stmt_invited)
+            invited = result_invited.scalar_one_or_none()
 
             if not inviter or not invited:
                 print(f"Не найден inviter ({referrer_telegram_id}) или invited ({invited_telegram_id})")
@@ -100,16 +107,19 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
 
             if invited.referred_by is not None:
                 if invited.referred_by == referrer_telegram_id:
-                    # Уже приглашён именно этим человеком — ничего не делаем, но можно логировать
                     print(f"[INFO] Повторное приглашение {invited_telegram_id} от {referrer_telegram_id} — игнорируем")
                     return
                 else:
                     print(f"[WARNING] Конфликт: {invited_telegram_id} уже приглашён {invited.referred_by}, а теперь пытаются {referrer_telegram_id}")
-                    return  # или raise, если хочешь запретить
+                    return
 
-            # Только здесь увеличиваем
+            # Изменяем данные
             invited.referred_by = referrer_telegram_id
             inviter.referrals += 1
+
+            # Явно обновляем объекты в сессии (на всякий случай)
+            await session.refresh(inviter)
+            await session.refresh(invited)
 
             print(f"[SUCCESS] Добавлен реферал: {invited_telegram_id} → {referrer_telegram_id}")
             print(f"У {referrer_telegram_id} теперь referrals = {inviter.referrals}")
