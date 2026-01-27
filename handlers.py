@@ -87,14 +87,10 @@ async def start_handler(message: types.Message):
 
         markup = main_menu()
         await message.answer("Добро пожаловать в CS2 Marketplace! Откройте приложение:", reply_markup=markup)
-        
     except Exception as e:
         print(f"[START CRASH] Ошибка в start_handler: {type(e).__name__}: {str(e)}")
         import traceback
         traceback.print_exc()
-        # Можно отправить себе в личку ошибку
-        await message.bot.send_message(693500766, f"Краш в /start: {str(e)}")
-
 
 async def claim_gift_callback(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
