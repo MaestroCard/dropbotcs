@@ -124,11 +124,19 @@ async def claim_gift_callback(callback: types.CallbackQuery):
 
     custom_id = f"gift_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
 
+    actual_price_rub = gift.get("price_rub")
+
+    if actual_price_rub is None:
+        await callback.answer("Ошибка: Не удалось определить цену подарка", show_alert=True)
+        return
+
+    max_price = int(actual_price_rub * 1.1)  # +10% или просто actual_price_rub
+
     params = {
         "product": gift['product_id'],
         "partner": trade_params["partner"],
         "token": trade_params["token"],
-        "max_price": 1000,
+        "max_price": max_price,               # ← теперь реальная цена!
         "custom_id": custom_id,
     }
 
@@ -206,11 +214,26 @@ async def successful_payment_handler(message: types.Message):
         await message.answer("Ошибка: Неверный формат trade-ссылки. Проверьте ссылку в профиле.")
         return
 
+    # Находим актуальную цену в кэше
+    actual_price_rub = None
+    for item in cache.all_items:
+        if item.get("product_id") == product_id or item.get("name") == product_id:
+            actual_price_rub = item.get("price_rub")  # ← берём цену в рублях из API
+            break
+
+    if actual_price_rub is None:
+        await message.answer("Ошибка: Не удалось найти актуальную цену предмета. Попробуйте позже.")
+        return
+
+    # Можно добавить небольшой запас (например +5–10%), если цены быстро меняются
+    max_price = int(actual_price_rub * 1.1)  # +10% на всякий случай (опционально)
+    # или строго: max_price = actual_price_rub
+
     params = {
         "product": product_id,
         "partner": trade_params["partner"],
         "token": trade_params["token"],
-        "max_price": 1000,
+        "max_price": max_price,               # ← теперь динамическая цена!
         "custom_id": f"purchase_{user.telegram_id}_{uuid.uuid4().hex[:8]}",
     }
 
@@ -229,6 +252,7 @@ async def successful_payment_handler(message: types.Message):
 
     print(f"[DEBUG PAY] Отправка на: {url}")
     print(f"[DEBUG PAY] Payload: {json.dumps(params, indent=2, ensure_ascii=False)}")
+    print(f"[DEBUG PAY] Использована цена: {actual_price_rub} руб (max_price = {max_price})")
 
     async with aiohttp.ClientSession() as session:
         try:
