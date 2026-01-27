@@ -89,11 +89,13 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
         return
 
     async with async_session() as session:
-        async with session.begin():
+        async with session.begin():   # ← транзакция открыта здесь
+            # Получаем пригласившего
             stmt_inviter = select(User).where(User.telegram_id == referrer_telegram_id)
             result_inviter = await session.execute(stmt_inviter)
             inviter = result_inviter.scalar_one_or_none()
 
+            # Получаем приглашённого
             stmt_invited = select(User).where(User.telegram_id == invited_telegram_id)
             result_invited = await session.execute(stmt_invited)
             invited = result_invited.scalar_one_or_none()
@@ -105,20 +107,27 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int):
             if invited.referred_by is not None:
                 if invited.referred_by == referrer_telegram_id:
                     print(f"[INFO] Повторное приглашение {invited_telegram_id} от {referrer_telegram_id} — игнорируем")
-                    return
                 else:
-                    print(f"[WARNING] Конфликт: {invited_telegram_id} уже приглашён {invited.referred_by}, а теперь пытаются {referrer_telegram_id}")
-                    return
+                    print(f"[WARNING] Конфликт реферала: {invited_telegram_id} уже имеет referrer {invited.referred_by}")
+                return  # в любом случае выходим — не трогаем
 
-            # Устанавливаем связь и увеличиваем счётчик
+            # ─── Основные изменения здесь ─────────────────────────────────────
             invited.referred_by = referrer_telegram_id
             inviter.referrals += 1
 
-            await session.refresh(inviter)
-            await session.refresh(invited)
+            # Добавляем/обновляем объекты в сессию **до** commit
+            session.add(invited)
+            session.add(inviter)
+
+            # Можно оставить refresh, но уже после изменений
+            # await session.refresh(inviter)
+            # await session.refresh(invited)
 
             print(f"[SUCCESS] Добавлен реферал: {invited_telegram_id} → {referrer_telegram_id}")
-            print(f"У {referrer_telegram_id} теперь referrals = {inviter.referrals}")
+            print(f"У {referrer_telegram_id} теперь referrals = {inviter.referrals} (в памяти сессии)")
+
+        # Здесь происходит commit автоматически благодаря async with session.begin()
+        # После выхода из блока транзакция коммитится
 
 async def update_steam(telegram_id: int, profile: str, trade_link: str):
     async with async_session() as session:
