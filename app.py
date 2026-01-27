@@ -12,6 +12,7 @@ import aiohttp
 from database import async_session, get_user, update_steam
 from cache import cache
 from bot import dp  # dp из bot.py
+from database import add_user
 
 load_dotenv()
 
@@ -32,6 +33,8 @@ xpanda_headers = {
     "Authorization": XPANDA_API_KEY,
     "Content-Type": "application/json"
 }
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -96,7 +99,7 @@ async def telegram_webhook(
 async def get_profile(telegram_id: int):
     user = await get_user(telegram_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        user = await add_user(telegram_id)  # Создаём, если не существует (referred_by=None)
     items = json.loads(user.items_received) if user.items_received else []
     return {
         "referrals": user.referrals,
@@ -109,9 +112,49 @@ async def get_profile(telegram_id: int):
 
 @app.post("/api/bind/{telegram_id}")
 async def bind_steam(telegram_id: int, data: dict = Body(...)):
-    await update_steam(telegram_id, data.get("profile"), data.get("trade_link"))
+    user = await get_user(telegram_id)
+    if not user:
+        user = await add_user(telegram_id)
+    profile = data.get("profile")
+    trade_link = data.get("trade_link")
+
+    if not profile or not trade_link:
+        raise HTTPException(status_code=400, detail="Не указан profile или trade_link")
+
+    # Проверка формата trade_link
+    if not is_valid_trade_link(trade_link):
+        raise HTTPException(status_code=400, detail="Неверный формат trade-ссылки. Должна быть вида: https://steamcommunity.com/tradeoffer/new/?partner=XXXX&token=XXXXXX")
+
+    await update_steam(telegram_id, profile, trade_link)
     return {"status": "success"}
 
+# Функция проверки (можно вынести в utils.py)
+def is_valid_trade_link(url: str) -> bool:
+    if not url:
+        return False
+
+    try:
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(url)
+        if parsed.hostname != 'steamcommunity.com':
+            return False
+        if not parsed.pathname.startswith('/tradeoffer/new/'):
+            return False
+
+        params = parse_qs(parsed.query)
+        partner = params.get('partner', [None])[0]
+        token = params.get('token', [None])[0]
+
+        if not partner or not token:
+            return False
+        if not partner.isdigit():
+            return False
+        if not all(c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in token):
+            return False
+
+        return True
+    except Exception:
+        return False
 
 @app.post("/api/claim_gift/{telegram_id}")
 async def claim_gift(telegram_id: int):

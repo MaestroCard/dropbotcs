@@ -69,8 +69,14 @@ function isValidTradeLink(url) {
 async function loadProfile() {
     try {
         const response = await fetch(`${backendUrl}/api/profile/${userId}`);
-        if (!response.ok) throw new Error('Profile not found');
+        if (!response.ok) {
+            if (response.status === 404) {
+                console.error('User not found in DB - should be created automatically now');
+            }
+            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
         const data = await response.json();
+        console.log('[PROFILE] Loaded data:', data);  // Для отладки
 
         document.getElementById('referrals').innerText = data.referrals || 0;
 
@@ -82,20 +88,23 @@ async function loadProfile() {
             itemsList.appendChild(li);
         });
 
-        // Отображение Steam и Trade link
         document.getElementById('steam-profile').innerText = data.steam_profile || 'Не привязан';
         document.getElementById('trade-link').innerText = data.trade_link || 'Не привязан';
 
         // Показываем кнопку подарка, если он есть
-        const giftSection = document.getElementById('gift-section');
-        if (data.has_gift) {
-            giftSection.innerHTML = '<button class="btn" onclick="claimGift()">Забрать подарок 🎁</button>';
-        } else {
-            giftSection.innerHTML = '';
-        }
+        // const giftSection = document.getElementById('gift-section');
+        // if (data.has_gift) {
+        //     giftSection.innerHTML = '<button class="btn" onclick="claimGift()">Забрать подарок 🎁</button>';
+        // } else {
+        //     giftSection.innerHTML = '';
+        // }
     } catch (error) {
         console.error('Error loading profile:', error);
-        document.getElementById('items').innerHTML = '<p style="color:#ef4444;">Ошибка загрузки профиля</p>';
+        // Показываем ошибку в UI (не только в items)
+        document.getElementById('referrals').innerText = 'Ошибка';
+        document.getElementById('steam-profile').innerText = 'Ошибка';
+        document.getElementById('trade-link').innerText = 'Ошибка';
+        document.getElementById('items').innerHTML = '<p style="color:#ef4444;">Ошибка загрузки профиля: ' + error.message + '</p>';
     }
 }
 
