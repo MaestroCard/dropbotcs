@@ -44,23 +44,57 @@ function switchTab(tabId) {
 
 // Функция проверки формата trade-ссылки
 function isValidTradeLink(url) {
-    if (!url) return false;
+    if (!url || typeof url !== 'string') return false;
 
     try {
         const parsed = new URL(url);
-        if (parsed.hostname !== 'steamcommunity.com') return false;
-        if (!parsed.pathname.startsWith('/tradeoffer/new/')) return false;
+
+        // Обязательно steamcommunity.com и правильный путь
+        if (parsed.hostname !== 'steamcommunity.com' &&
+            parsed.hostname !== 'www.steamcommunity.com') {
+            return false;
+        }
+
+        if (!parsed.pathname.startsWith('/tradeoffer/new/')) {
+            return false;
+        }
 
         const params = new URLSearchParams(parsed.search);
+
         const partner = params.get('partner');
-        const token = params.get('token');
+        const token   = params.get('token');
 
-        if (!partner || !token) return false;
-        if (!/^\d+$/.test(partner)) return false;  // partner — только цифры
-        if (!/^[a-zA-Z0-9_-]+$/.test(token)) return false;  // token — буквы, цифры, -, _
+        // Проверяем наличие обоих параметров
+        if (!partner || !token) {
+            console.warn('Нет partner или token в trade-ссылке');
+            return false;
+        }
 
-        return true;
+        // partner — только цифры
+        if (!/^\d+$/.test(partner)) {
+            console.warn('partner не состоит только из цифр:', partner);
+            return false;
+        }
+
+        // token — обычно base64-подобный, но Steam допускает: буквы, цифры, -, _, иногда +
+        if (!/^[a-zA-Z0-9_-]+$/.test(token)) {
+            // Более мягкая проверка — если есть +, иногда бывает
+            if (!/^[a-zA-Z0-9_+\-]+$/.test(token)) {
+                console.warn('Недопустимые символы в token:', token);
+                return false;
+            }
+        }
+
+        // Длина token обычно 8–11 символов, но не обязательно жёстко проверять
+        if (token.length < 6 || token.length > 20) {
+            console.warn('Странная длина token:', token.length);
+            // Можно закомментировать, если не хотите строгость
+        }
+
+        return true;  // или return { partner, token } — если нужно
+
     } catch (e) {
+        console.error('Ошибка парсинга URL:', e);
         return false;
     }
 }
