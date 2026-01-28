@@ -192,7 +192,7 @@ async function fetchItems() {
     isLoading = true;
 
     try {
-        let url = `${backendUrl}/api/items?page=${currentPage}&limit=20&balance_check=true`;  // ← добавлено
+        let url = `${backendUrl}/api/items?page=${currentPage}&limit=20&balance_check=false`;  // ← добавлено
         if (searchQuery.trim()) {
             url += `&search=${encodeURIComponent(searchQuery)}`;
         }
