@@ -35,6 +35,12 @@ class ItemsCache:
         self.skins_data = []
         self.crates_data = []
         self.stickers_data = []
+        self.balance = {
+            "total": 0,
+            "locked": 0,
+            "available": 0
+        }
+        self.balance_last_updated = None
 
         try:
             with open('data/skins.json', 'r', encoding='utf-8') as f:
@@ -54,9 +60,37 @@ class ItemsCache:
         except FileNotFoundError:
             print("stickers.json не найден")
 
+    async def update_balance(self):
+        """Обновляет только баланс"""
+        url = XPANDA_BASE_URL + "/balance/"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=xpanda_headers,
+                    timeout=15
+                ) as resp:
+                    if resp.status != 200:
+                        print(f"[BALANCE] Ошибка статуса: {resp.status}")
+                        return False
+                    
+                    data = await resp.json()
+                    self.balance = {
+                        "total": data.get("total", 0),
+                        "locked": data.get("locked", 0),
+                        "available": data.get("available", 0)
+                    }
+                    self.balance_last_updated = datetime.now()
+                    print(f"[BALANCE] Обновлён: available = {self.balance['available']}")
+                    return True
+        except Exception as e:
+            print(f"[BALANCE ERROR] {type(e).__name__}: {str(e)}")
+            return False
+    
     def get_skin_image(self, name: str) -> str:
         name_lower = name.lower().strip()
         cleaned_name = name_lower.replace('stattrak™ ', '').split('(')[0].strip()
+        cleaned_name = cleaned_name.replace('souvenir  ', '').split('(')[0].strip()
 
         for skin in self.skins_data:
             if cleaned_name in skin.get('name', '').lower() or cleaned_name in skin.get('market_hash_name', '').lower():
@@ -151,6 +185,7 @@ class ItemsCache:
                     print(f"   Ошибка обновления кэша: {type(e).__name__}: {str(e)}")
                     self._cache_not_getted = False
 
+            await self.update_balance()
             await asyncio.sleep(self.CACHE_UPDATE_INTERVAL)
 
 

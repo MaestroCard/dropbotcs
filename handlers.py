@@ -49,6 +49,24 @@ def parse_trade_link(trade_link: str) -> dict | None:
         return None
 
 
+async def get_actual_balance():
+    """Получает актуальный баланс напрямую с API"""
+    url = f"{XPANDA_BASE_URL}/balance/"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=xpanda_headers, timeout=10) as resp:
+                if resp.status != 200:
+                    print(f"[BALANCE CHECK] Ошибка статуса: {resp.status}")
+                    return None
+                data = await resp.json()
+                available = data.get("available", 0)
+                print(f"[BALANCE CHECK] Доступно: {available} руб")
+                return available
+    except Exception as e:
+        print(f"[BALANCE CHECK ERROR] {type(e).__name__}: {str(e)}")
+        return None
+
+
 async def start_handler(message: types.Message):
     print(f"[START] Начало обработки от {message.from_user.id}, текст: {message.text}")
     args = message.text.split()
@@ -86,11 +104,11 @@ async def start_handler(message: types.Message):
         except Exception as e:
             print(f"[REFERRAL CRASH] Ошибка при обработке реферала: {type(e).__name__}: {str(e)}")
             import traceback
-            traceback.print_exc()   # покажет полный стек в консоль / логи railway
+            traceback.print_exc()
 
-    # остальной код без изменений
     markup = main_menu()
     await message.answer("Добро пожаловать в CS2 Marketplace! Откройте приложение:", reply_markup=markup)
+
 
 async def claim_gift_callback(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
@@ -122,21 +140,34 @@ async def claim_gift_callback(callback: types.CallbackQuery):
 
     gift = random.choice(cheap_items)
 
-    custom_id = f"gift_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
+    actual_price_rub = gift.get("price_rub", 0)
 
-    actual_price_rub = gift.get("price_rub")
-
-    if actual_price_rub is None:
-        await callback.answer("Ошибка: Не удалось определить цену подарка", show_alert=True)
+    if actual_price_rub <= 0:
+        await callback.answer("Ошибка: Не удалось определить подарок", show_alert=True)
         return
 
-    max_price = int(actual_price_rub * 1.1)  # +10% или просто actual_price_rub
+    # Проверка баланса перед выдачей подарка
+    available_balance = await get_actual_balance()
+    if available_balance is None:
+        await callback.answer("Ошибка. Попробуйте позже.", show_alert=True)
+        return
+
+    if available_balance < actual_price_rub:
+        await callback.answer(
+            "Предмет временно недоступен. Повторите попытку позже.",
+            show_alert=True
+        )
+        return
+
+    custom_id = f"gift_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
+
+    max_price = int(actual_price_rub * 1.1)
 
     params = {
         "product": gift['product_id'],
         "partner": trade_params["partner"],
         "token": trade_params["token"],
-        "max_price": max_price,               # ← теперь реальная цена!
+        "max_price": max_price,
         "custom_id": custom_id,
     }
 
@@ -214,26 +245,35 @@ async def successful_payment_handler(message: types.Message):
         await message.answer("Ошибка: Неверный формат trade-ссылки. Проверьте ссылку в профиле.")
         return
 
-    # Находим актуальную цену в кэше
     actual_price_rub = None
     for item in cache.all_items:
         if item.get("product_id") == product_id or item.get("name") == product_id:
-            actual_price_rub = item.get("price_rub")  # ← берём цену в рублях из API
+            actual_price_rub = item.get("price_rub")
             break
 
-    if actual_price_rub is None:
+    if actual_price_rub is None or actual_price_rub <= 0:
         await message.answer("Ошибка: Не удалось найти актуальную цену предмета. Попробуйте позже.")
         return
 
-    # Можно добавить небольшой запас (например +5–10%), если цены быстро меняются
-    max_price = int(actual_price_rub * 1.1)  # +10% на всякий случай (опционально)
-    # или строго: max_price = actual_price_rub
+    # Проверка баланса перед покупкой
+    available_balance = await get_actual_balance()
+    if available_balance is None:
+        await message.answer("Ошибка. Попробуйте позже.")
+        return
+
+    if available_balance < actual_price_rub:
+        await message.answer(
+            "Предмет временно недоступен. Повторите попытку позже."
+        )
+        return
+
+    max_price = int(actual_price_rub * 1.1)
 
     params = {
         "product": product_id,
         "partner": trade_params["partner"],
         "token": trade_params["token"],
-        "max_price": max_price,               # ← теперь динамическая цена!
+        "max_price": max_price,
         "custom_id": f"purchase_{user.telegram_id}_{uuid.uuid4().hex[:8]}",
     }
 

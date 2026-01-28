@@ -197,7 +197,8 @@ async def claim_gift(telegram_id: int):
 async def get_items(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=5, le=100),
-    search: str = Query("")
+    search: str = Query(""),
+    balance_check: bool = Query(False)  # ← новый параметр
 ):
     if not cache.all_items:
         return {"items": [], "total": 0, "page": page, "pages": 1, "message": "Кэш ещё не загружен"}
@@ -206,6 +207,15 @@ async def get_items(
     if search.strip():
         search_lower = search.lower().strip()
         filtered = [item for item in cache.all_items if search_lower in item["name"].lower()]
+
+    # Новый фильтр по балансу
+    if balance_check:
+        available = cache.balance.get("available", 0)
+        if available > 0:
+            filtered = [item for item in filtered if item.get("price_rub", 0) <= available]
+        else:
+            # если баланс 0 — показываем только бесплатные (если есть) или пустой список
+            filtered = [item for item in filtered if item.get("price_rub", 0) == 0]
 
     start = (page - 1) * limit
     paginated = filtered[start:start + limit]
@@ -221,7 +231,8 @@ async def get_items(
         "total": total,
         "page": page,
         "pages": pages,
-        "cache_timestamp": cache.cache_timestamp.isoformat() if cache.cache_timestamp else None
+        "cache_timestamp": cache.cache_timestamp.isoformat() if cache.cache_timestamp else None,
+        "available_balance": cache.balance.get("available", 0)  # ← можно вернуть для информации
     }
 
 
