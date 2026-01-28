@@ -135,6 +135,7 @@ class ItemsCache:
                                 "name": name,
                                 "price_stars": price_stars,
                                 "price_usd": price_usd,
+                                "price_rub": price_rub,
                                 "image": image,
                                 "quantity": quantity
                             })
