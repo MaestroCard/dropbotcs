@@ -67,6 +67,27 @@ async def get_actual_balance():
         return None
 
 
+async def decrease_item_in_cache(product_id: str, quantity: int = 1):
+    """Уменьшает количество предмета в кэше на указанное значение"""
+    for item in cache.all_items:
+        if item.get("product_id") == product_id or item.get("name") == product_id:
+            current_qty = item.get("quantity", 0)
+            if isinstance(current_qty, (int, float)) and current_qty > 0:
+                item["quantity"] = max(0, current_qty - quantity)
+                print(f"[CACHE] Уменьшено количество {product_id}: {current_qty} → {item['quantity']}")
+            break
+
+
+async def decrease_balance(amount_rub: float):
+    """Уменьшает available баланс после успешной операции"""
+    if cache.balance["available"] >= amount_rub:
+        cache.balance["available"] -= amount_rub
+        cache.balance["total"] = cache.balance["available"] + cache.balance["locked"]  # грубо
+        print(f"[CACHE] Баланс уменьшен на {amount_rub} руб. Новый available: {cache.balance['available']}")
+    else:
+        print("[CACHE WARN] Баланс в кэше меньше суммы покупки — возможна рассинхронизация")
+
+
 async def start_handler(message: types.Message):
     print(f"[START] Начало обработки от {message.from_user.id}, текст: {message.text}")
     args = message.text.split()
@@ -143,16 +164,12 @@ async def claim_gift_callback(callback: types.CallbackQuery):
     actual_price_rub = gift.get("price_rub", 0)
 
     if actual_price_rub <= 0:
-        await callback.answer("Ошибка: Не удалось определить подарок", show_alert=True)
+        await callback.answer("Ошибка: Не удалось определить цену подарка", show_alert=True)
         return
 
     # Проверка баланса перед выдачей подарка
     available_balance = await get_actual_balance()
-    if available_balance is None:
-        await callback.answer("Ошибка. Попробуйте позже.", show_alert=True)
-        return
-
-    if available_balance < actual_price_rub:
+    if available_balance is None or available_balance < actual_price_rub:
         await callback.answer(
             "Предмет временно недоступен. Повторите попытку позже.",
             show_alert=True
@@ -204,6 +221,11 @@ async def claim_gift_callback(callback: types.CallbackQuery):
                         async with session.begin():
                             session.add(user)
 
+                    # Уменьшаем количество и баланс в кэше
+                    await decrease_item_in_cache(gift['product_id'])
+                    if actual_price_rub > 0:
+                        await decrease_balance(actual_price_rub)
+
                     await callback.message.edit_text(
                         f"🎉 Подарок успешно отправлен в Steam!\n"
                         f"**{gift['name']}** за {gift['price_stars']} ⭐\n"
@@ -226,6 +248,23 @@ async def bind_steam(message: types.Message):
 
 
 async def pre_checkout_query_handler(pre_checkout_query: types.PreCheckoutQuery):
+    payload = json.loads(pre_checkout_query.invoice_payload)
+    product_id = payload.get('product_id')
+    actual_price_rub = None
+    for item in cache.all_items:
+        if item.get("product_id") == product_id or item.get("name") == product_id:
+            actual_price_rub = item.get("price_rub")
+            break
+
+    if actual_price_rub is None or actual_price_rub <= 0:
+        await pre_checkout_query.answer(ok=False, error_message="Ошибка: Не удалось найти актуальную цену предмета. Попробуйте позже.")
+        return
+
+    available_balance = await get_actual_balance()
+    if available_balance is None or available_balance < actual_price_rub:
+        await pre_checkout_query.answer(ok=False, error_message="Предмет временно недоступен. Повторите попытку позже.")
+        return
+
     await pre_checkout_query.answer(ok=True)
 
 
@@ -251,20 +290,8 @@ async def successful_payment_handler(message: types.Message):
             actual_price_rub = item.get("price_rub")
             break
 
-    if actual_price_rub is None or actual_price_rub <= 0:
+    if actual_price_rub is None:
         await message.answer("Ошибка: Не удалось найти актуальную цену предмета. Попробуйте позже.")
-        return
-
-    # Проверка баланса перед покупкой
-    available_balance = await get_actual_balance()
-    if available_balance is None:
-        await message.answer("Ошибка. Попробуйте позже.")
-        return
-
-    if available_balance < actual_price_rub:
-        await message.answer(
-            "Предмет временно недоступен. Повторите попытку позже."
-        )
         return
 
     max_price = int(actual_price_rub * 1.1)
@@ -307,6 +334,12 @@ async def successful_payment_handler(message: types.Message):
 
                 if resp.status in [200, 201]:
                     result = json.loads(text)
+
+                    # Уменьшаем количество и баланс в кэше
+                    await decrease_item_in_cache(product_id)
+                    if actual_price_rub > 0:
+                        await decrease_balance(actual_price_rub)
+
                     await message.answer(
                         f"⭐ Оплата прошла успешно! Предмет отправлен в трейд.\n"
                         f"ID сделки: {result.get('id', 'неизвестно')}\n"
