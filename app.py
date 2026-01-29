@@ -235,6 +235,13 @@ async def get_items(
         "available_balance": cache.balance.get("available", 0)  # ← можно вернуть для информации
     }
 
+@app.get("/api/balance")
+async def get_balance():
+    return {
+        "available": cache.balance["available"],
+        "total": cache.balance["total"],
+        "locked": cache.balance["locked"]
+    }
 
 @app.post("/api/create_invoice")
 async def create_invoice(data: dict):

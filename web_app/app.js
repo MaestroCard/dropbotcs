@@ -142,7 +142,7 @@ async function claimGift() {
 
         if (response.ok) {
             alert('Подарок успешно забран!');
-            loadProfile();
+            loadプラット();
         } else {
             const err = await response.text();
             alert('Ошибка при получении подарка: ' + err);
@@ -183,7 +183,7 @@ async function generateRefLink() {
 
 function shareLink() {
     const refText = document.getElementById('ref-link').innerText || '';
-    if (refText) webApp.switchInlineQuery(`Пригласи друга в CS2 Marketplace и получи скин бесплатно! ${refText}`);
+    if (refText)  webApp.switchInlineQuery(`Пригласи друга в CS2 Marketplace и получи скин бесплатно! ${refText}`);
 }
 
 // Загрузка предметов
@@ -221,7 +221,7 @@ async function fetchItems() {
                 const div = document.createElement('div');
                 div.className = 'item';
                 div.innerHTML = `
-                    <img src="${item.image}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/80x60?text=Item'">
+                    <img onload="this.style.opacity=1" src="${item.image}" alt="${item.name}" onerror="this.src='https://via.placeholder.com/80x60?text=Item'">
                     <div style="flex: 1;">
                         <h3>${item.name}</h3>
                         <div class="price-container">
@@ -230,7 +230,7 @@ async function fetchItems() {
                         </div>
                         <p>В наличии: ${item.quantity || 'много'}</p>
                     </div>
-                    <button class="btn" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}')">Купить</button>
+                    <button class="btn" onclick="buyItem(${item.id}, ${item.price_stars}, '${item.name.replace(/'/g, "\\'")}', '${item.product_id || item.name}', ${item.price_rub || 0})">Купить</button>
                 `;
                 list.appendChild(div);
             });
@@ -292,7 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Покупка
-async function buyItem(itemId, priceStars, itemName, productId = '') {
+async function buyItem(itemId, priceStars, itemName, productId = '', priceRub = 0) {
     if (!priceStars || priceStars <= 0) return alert('Цена не указана');
 
     const profileResponse = await fetch(`${backendUrl}/api/profile/${userId}`);
@@ -301,6 +301,26 @@ async function buyItem(itemId, priceStars, itemName, productId = '') {
     if (!profileData.trade_link || profileData.trade_link === 'Не привязан') {
         alert('Нельзя купить — сначала привяжите trade link в профиле!');
         switchTab('profile');
+        return;
+    }
+
+    // Проверка баланса сразу после trade_link
+    let balanceData = { available: 0 };
+    try {
+        const balanceResponse = await fetch(`${backendUrl}/api/balance`);
+        if (balanceResponse.ok) {
+            balanceData = await balanceResponse.json();
+        } else {
+            alert('Ошибка проверки баланса. Попробуйте позже.');
+            return;
+        }
+    } catch (e) {
+        alert('Ошибка проверки баланса. Попробуйте позже.');
+        return;
+    }
+
+    if (balanceData.available < priceRub) {
+        alert('Недостаточно средств на балансе. Предмет временно недоступен. Повторите попытку позже.');
         return;
     }
 
@@ -378,4 +398,4 @@ loadProfile();
 switchTab('landing');
 
 console.log("Мини-приложение запущено");
-console.log("Версия app.js: 2026-01-23-v4");
+console.log("Версия app.js: 2026-01-29-v4");
