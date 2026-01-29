@@ -76,9 +76,9 @@ class ItemsCache:
                     
                     data = await resp.json()
                     self.balance = {
-                        "total": data.get("total", 0),
+                        "total": 0,
                         "locked": data.get("locked", 0),
-                        "available": data.get("available", 0)
+                        "available": 0
                     }
                     self.balance_last_updated = datetime.now()
                     print(f"[BALANCE] Обновлён: available = {self.balance['available']}")
