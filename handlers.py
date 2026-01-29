@@ -241,7 +241,8 @@ async def pre_checkout_query_handler(pre_checkout_query: types.PreCheckoutQuery)
         await pre_checkout_query.answer(ok=False, error_message="Ошибка: Не удалось найти актуальную цену предмета. Попробуйте позже.")
         return
 
-    available_balance = await get_actual_balance()
+    # available_balance = await get_actual_balance()
+    available_balance = 0
     print(f"[PRE_CHECKOUT] Баланс с API: {available_balance}")
 
     if available_balance is None:
