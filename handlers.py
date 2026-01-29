@@ -250,6 +250,7 @@ async def bind_steam(message: types.Message):
 async def pre_checkout_query_handler(pre_checkout_query: types.PreCheckoutQuery):
     payload = json.loads(pre_checkout_query.invoice_payload)
     product_id = payload.get('product_id')
+
     actual_price_rub = None
     for item in cache.all_items:
         if item.get("product_id") == product_id or item.get("name") == product_id:
@@ -261,7 +262,11 @@ async def pre_checkout_query_handler(pre_checkout_query: types.PreCheckoutQuery)
         return
 
     available_balance = await get_actual_balance()
-    if available_balance is None or available_balance < actual_price_rub:
+    if available_balance is None:
+        await pre_checkout_query.answer(ok=False, error_message="Ошибка проверки баланса. Попробуйте позже.")
+        return
+
+    if available_balance < actual_price_rub:
         await pre_checkout_query.answer(ok=False, error_message="Предмет временно недоступен. Повторите попытку позже.")
         return
 
