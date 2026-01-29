@@ -311,16 +311,16 @@ async function buyItem(itemId, priceStars, itemName, productId = '', priceRub = 
         if (balanceResponse.ok) {
             balanceData = await balanceResponse.json();
         } else {
-            alert('Ошибка проверки баланса. Попробуйте позже.');
+            alert('Ошибка. Попробуйте позже.');
             return;
         }
     } catch (e) {
-        alert('Ошибка проверки баланса. Попробуйте позже.');
+        alert('Ошибка. Попробуйте позже.');
         return;
     }
 
-    if (balanceData.available < priceRub) {
-        alert('Недостаточно средств на балансе. Предмет временно недоступен. Повторите попытку позже.');
+    if (balanceData.available < (priceRub * 1.1)) {
+        alert('Предмет временно недоступен. Повторите попытку позже.');
         return;
     }
 
