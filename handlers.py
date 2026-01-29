@@ -222,40 +222,6 @@ async def bind_steam(message: types.Message):
 
 
 async def pre_checkout_query_handler(pre_checkout_query: types.PreCheckoutQuery):
-    print(f"[PRE_CHECKOUT] Получен pre_checkout_query от {pre_checkout_query.from_user.id}")
-    print(f"[PRE_CHECKOUT] Payload: {pre_checkout_query.invoice_payload}")
-
-    payload = json.loads(pre_checkout_query.invoice_payload)
-    product_id = payload.get('product_id')
-
-    actual_price_rub = None
-    for item in cache.all_items:
-        if item.get("product_id") == product_id or item.get("name") == product_id:
-            actual_price_rub = item.get("price_rub")
-            break
-
-    print(f"[PRE_CHECKOUT] Найдена цена в кэше: {actual_price_rub}")
-
-    if actual_price_rub is None or actual_price_rub <= 0:
-        print("[PRE_CHECKOUT] Цена не найдена или нулевая → отказ")
-        await pre_checkout_query.answer(ok=False, error_message="Ошибка: Не удалось найти актуальную цену предмета. Попробуйте позже.")
-        return
-
-    available_balance = await get_actual_balance()
-    
-    print(f"[PRE_CHECKOUT] Баланс с API: {available_balance}")
-
-    if available_balance is None:
-        print("[PRE_CHECKOUT] Не удалось получить баланс → отказ")
-        await pre_checkout_query.answer(ok=False, error_message="Ошибка проверки баланса. Попробуйте позже.")
-        return
-
-    if available_balance < actual_price_rub:
-        print(f"[PRE_CHECKOUT] Баланс {available_balance} < {actual_price_rub} → отказ")
-        await pre_checkout_query.answer(ok=False, error_message="Предмет временно недоступен. Повторите попытку позже.")
-        return
-
-    print("[PRE_CHECKOUT] Всё ок → разрешаем инвойс")
     await pre_checkout_query.answer(ok=True)
 
 
