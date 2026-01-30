@@ -90,7 +90,7 @@ class ItemsCache:
     def get_skin_image(self, name: str) -> str:
         name_lower = name.lower().strip()
         cleaned_name = name_lower.replace('stattrak™ ', '').split('(')[0].strip()
-        cleaned_name = cleaned_name.replace('souvenir  ', '').split('(')[0].strip()
+        cleaned_name = cleaned_name.replace('souvenir ', '').split('(')[0].strip()
 
         for skin in self.skins_data:
             if cleaned_name in skin.get('name', '').lower() or cleaned_name in skin.get('market_hash_name', '').lower():
