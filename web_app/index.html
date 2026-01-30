@@ -248,7 +248,7 @@
             <!-- Дубликаты для большей плотности (новые скины появляются чаще) -->
             <img class="floating-skin skin-9" src="https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1Q7uCvZaZkNM-SH1iWzvx1teVWQyC0nQlp5zmEyI6rcC7DZg8pXpRyQOMOsBG-xNaxZbzl4wPdit5Azij3239MvDErvbgAJOXq8Q" alt="Hand Wraps">
             <img class="floating-skin skin-10" src="https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1M5vahf6lsK_WBMWad_up5oPFlSjuMhRUmoDjWpZjwJSTQAVp5Xco0W-8M4RG7wdPhYrvm4FPZio1Ezi323HhN6ytp47tRWKcsrqCBigzDOLUjoc5UMQO3baE" alt="AK Redline">
-            <img class="floating-skin skin-11" src="https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL8js_f-jFk7uCtfK1uH_2DV1icyOl-pK86HHrrwE5ztWSGydv_eCifOAF2DMB5Fu5etEK9lt3hMuLh5gWPitgX02yg2dKG9WA" alt="BK Fade">
+            <img class="floating-skin skin-11" src="https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1I-_uibbB5L8-SAFiEyOlzot5mXSi9khgYvzSCkpu3JyjBawQkXsF0EeEO4Ea_m93iNLjk71PfjtlDxSms3S1M7yhj47wLA71lpPOYHm96Lg" alt="BK Fade">
             <img class="floating-skin skin-12" src="https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL8js_f7i1k9veiZKt6H_yaCW-Ej-tztbQ5Hy2wxklw5TiDnt_4eC_GOFR1XJdzQ-AMskXswNbvNuvq4wPAy9USwXKj73o" alt="AWP Asiimov">
             <img class="floating-skin skin-13" src="https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj7-lz1QAn4kZjf9CsVuvf7OfQ5IabBVzbHlb915bcwHCjikEp_sTnTn4z6eH6RblQlC8RwFPlK7EdXSP0Ibg" alt="M4 Hyper Beast">
             <img class="floating-skin skin-14" src="https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLinZfyr3Jk5-uRabF5KP-BB3OJ_v5jovFlSha_nBovp3PVzdr8cHnBbAcnXsAmR-UOsRHsktTmYb_ns1CNg4JCzSX_iiNKvS0__a9cBnHoQ9ul" alt="Case">
@@ -299,7 +299,7 @@
         function randomizeSkins() {
             const skins = document.querySelectorAll('.floating-skin');
             skins.forEach(skin => {
-                const left = Math.random() * 90 + 5; // равномерное распределение
+                const left = Math.random() * 100; // равномерное распределение
                 const delay = Math.random() * 5;     // уменьшена задержка для более частого появления
                 const duration = 10 + Math.random() * 8; // чуть быстрее цикл
 
