@@ -196,7 +196,7 @@
         }
         .floating-skin {
             position: absolute;
-            top: -120px; /* стартуют за пределами экрана сверху */
+            top: -120px;
             width: 80px;
             height: auto;
             opacity: 0;
@@ -290,9 +290,9 @@
         function randomizeSkins() {
             const skins = document.querySelectorAll('.floating-skin');
             skins.forEach(skin => {
-                const left = Math.random() * 85 + 7.5; // от 7.5% до 92.5%
+                const left = Math.random() * 90 + 5; // от 5% до 95% — равномерное распределение по всей ширине
                 const delay = Math.random() * 10;
-                const duration = 12 + Math.random() * 10; // 12–22 сек
+                const duration = 12 + Math.random() * 10;
 
                 skin.style.left = `${left}%`;
                 skin.style.animationDelay = `${delay}s`;
