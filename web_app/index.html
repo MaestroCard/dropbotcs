@@ -196,16 +196,18 @@
         }
         .floating-skin {
             position: absolute;
+            top: -120px; /* стартуют за пределами экрана сверху */
             width: 80px;
             height: auto;
-            opacity: 0.6;
+            opacity: 0;
             animation: fall linear infinite;
             user-select: none;
         }
         @keyframes fall {
             0% {
-                transform: translateY(-120px) rotate(0deg);
+                top: -120px;
                 opacity: 0;
+                transform: rotate(0deg);
             }
             10% {
                 opacity: 0.6;
@@ -214,8 +216,9 @@
                 opacity: 0.6;
             }
             100% {
-                transform: translateY(calc(100vh + 120px)) rotate(360deg);
+                top: calc(100vh + 120px);
                 opacity: 0;
+                transform: rotate(360deg);
             }
         }
     </style>
