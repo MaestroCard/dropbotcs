@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import os
 import json
 import aiohttp
+import time  # ← добавлено для кулдауна
 from database import async_session, get_user, update_steam
 from cache import cache
 from bot import dp  # dp из bot.py
@@ -34,11 +35,34 @@ xpanda_headers = {
     "Content-Type": "application/json"
 }
 
+# Глобальный кулдаун по item_id (60 секунд между созданием инвойсов для одного предмета)
+item_cooldowns = {}  # {item_id: timestamp последнего создания инвойса}
+
+
+async def get_fresh_price(product_id: str):
+    url = f"{XPANDA_BASE_URL}/items/prices/"
+    params = {"names[]": product_id}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=xpanda_headers, params=params, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    items = data.get("items", [])
+                    for item in items:
+                        if item.get("n") == product_id:
+                            return item.get("p", 0), item.get("q", 0)
+                    return None, None
+                else:
+                    print(f"[FRESH PRICE] Ошибка {resp.status}")
+                    return None, None
+    except Exception as e:
+        print(f"[FRESH PRICE ERROR] {type(e).__name__}: {str(e)}")
+        return None, None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Railway / Render / Fly.io обычно используют переменную RAILWAY_PUBLIC_DOMAIN или аналог
     domain = os.getenv('RAILWAY_PUBLIC_DOMAIN') or os.getenv('PUBLIC_DOMAIN')
     if not domain:
         raise RuntimeError("Не найден публичный домен (RAILWAY_PUBLIC_DOMAIN)")
@@ -52,7 +76,6 @@ async def lifespan(app: FastAPI):
             drop_pending_updates=True
         )
         print(f"Webhook успешно установлен: {webhook_url}")
-        print(f"Secret token: {WEBHOOK_SECRET[:8]}... (скрыто)")
     except Exception as e:
         print(f"Ошибка установки webhook: {str(e)}")
 
@@ -78,7 +101,6 @@ app.add_middleware(
 app.mount("/web_app", StaticFiles(directory="web_app", html=True), name="web_app")
 
 
-# ─── Ручной обработчик webhook от Telegram ────────────────────────────────
 @app.post("/webhook")
 async def telegram_webhook(
     request: Request,
@@ -88,18 +110,14 @@ async def telegram_webhook(
     if x_telegram_bot_api_secret_token != WEBHOOK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret token")
 
-    # Передаём обновление в aiogram-диспетчер
     await dp.feed_update(bot, update)
     return {"ok": True}
 
-
-# ─── Остальные эндпоинты остаются без изменений ───────────────────────────
 
 @app.get("/api/profile/{telegram_id}")
 async def get_profile(telegram_id: int):
     user = await get_user(telegram_id)
     if not user:
-        # Больше НЕ создаём пользователя автоматически
         raise HTTPException(
             status_code=404,
             detail="Пользователь не найден. Напишите боту /start, чтобы зарегистрироваться."
@@ -117,80 +135,14 @@ async def get_profile(telegram_id: int):
 
 @app.post("/api/bind/{telegram_id}")
 async def bind_steam(telegram_id: int, data: dict = Body(...)):
-    user = await get_user(telegram_id)
-    if not user:
-        user = await add_user(telegram_id)
     profile = data.get("profile")
     trade_link = data.get("trade_link")
 
     if not profile or not trade_link:
-        raise HTTPException(status_code=400, detail="Не указан profile или trade_link")
-
-    # Проверка формата trade_link
-    if not is_valid_trade_link(trade_link):
-        raise HTTPException(status_code=400, detail="Неверный формат trade-ссылки. Должна быть вида: https://steamcommunity.com/tradeoffer/new/?partner=XXXX&token=XXXXXX")
+        raise HTTPException(status_code=400, detail="Не указаны profile или trade_link")
 
     await update_steam(telegram_id, profile, trade_link)
-    return {"status": "success"}
-
-# Функция проверки (можно вынести в utils.py)
-def is_valid_trade_link(url: str) -> bool:
-    if not url:
-        return False
-
-    try:
-        from urllib.parse import urlparse, parse_qs, unquote
-
-        # Раскодируем HTML-сущности (&amp; → &)
-        url = unquote(url)
-
-        parsed = urlparse(url)
-
-        # Разрешаем www. и без него
-        if parsed.hostname not in ('steamcommunity.com', 'www.steamcommunity.com'):
-            return False
-
-        if not parsed.path.startswith('/tradeoffer/new/'):
-            return False
-
-        params = parse_qs(parsed.query)
-
-        partner = params.get('partner', [None])[0]
-        token   = params.get('token',   [None])[0]
-
-        if not partner or not token:
-            return False
-
-        if not partner.isdigit():
-            return False
-
-        # Token обычно состоит из букв, цифр, _, -, иногда +
-        allowed_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-+')
-        if not all(c in allowed_chars for c in token):
-            return False
-
-        # Можно добавить длину, если хочешь строгость
-        # if len(token) < 6 or len(token) > 20:
-        #     return False
-
-        return True
-
-    except Exception as e:
-        print(e)
-        return False
-
-@app.post("/api/claim_gift/{telegram_id}")
-async def claim_gift(telegram_id: int):
-    user = await get_user(telegram_id)
-    if not user or not user.has_gift:
-        raise HTTPException(status_code=400, detail="Подарок недоступен")
-
-    user.has_gift = False
-    async with async_session() as session:
-        async with session.begin():
-            session.add(user)
-
-    return {"status": "success"}
+    return {"status": "ok"}
 
 
 @app.get("/api/items")
@@ -198,7 +150,7 @@ async def get_items(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=5, le=100),
     search: str = Query(""),
-    balance_check: bool = Query(False)  # ← новый параметр
+    balance_check: bool = Query(False)
 ):
     if not cache.all_items:
         return {"items": [], "total": 0, "page": page, "pages": 1, "message": "Кэш ещё не загружен"}
@@ -208,13 +160,11 @@ async def get_items(
         search_lower = search.lower().strip()
         filtered = [item for item in cache.all_items if search_lower in item["name"].lower()]
 
-    # Новый фильтр по балансу
     if balance_check:
         available = cache.balance.get("available", 0)
         if available > 0:
             filtered = [item for item in filtered if item.get("price_rub", 0) <= available]
         else:
-            # если баланс 0 — показываем только бесплатные (если есть) или пустой список
             filtered = [item for item in filtered if item.get("price_rub", 0) == 0]
 
     start = (page - 1) * limit
@@ -232,8 +182,9 @@ async def get_items(
         "page": page,
         "pages": pages,
         "cache_timestamp": cache.cache_timestamp.isoformat() if cache.cache_timestamp else None,
-        "available_balance": cache.balance.get("available", 0)  # ← можно вернуть для информации
+        "available_balance": cache.balance.get("available", 0)
     }
+
 
 @app.get("/api/balance")
 async def get_balance():
@@ -242,6 +193,15 @@ async def get_balance():
         "total": cache.balance["total"],
         "locked": cache.balance["locked"]
     }
+
+
+@app.get("/api/item_price")
+async def get_item_price(product_id: str = Query(...)):
+    fresh_rub, fresh_qty = await get_fresh_price(product_id)
+    if fresh_rub is None:
+        raise HTTPException(status_code=503, detail="Не удалось получить актуальную цену")
+    return {"price_rub": fresh_rub, "quantity": fresh_qty}
+
 
 @app.post("/api/create_invoice")
 async def create_invoice(data: dict):
@@ -252,7 +212,6 @@ async def create_invoice(data: dict):
     user_id = data.get('user_id')
     price_stars = data.get('price_stars')
 
-    # Проверка обязательных полей
     missing = []
     if not item_id: missing.append('item_id')
     if not product_id: missing.append('product_id')
@@ -263,12 +222,17 @@ async def create_invoice(data: dict):
         print("[DEBUG INVOICE] Отсутствуют поля:", missing)
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
-    # Проверка trade_link
     user = await get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.trade_link:
         raise HTTPException(status_code=400, detail="Trade link не привязан. Привяжите trade link в профиле перед покупкой.")
+
+    # Глобальный кулдаун по item_id (60 секунд)
+    now = time.time()
+    last_time = item_cooldowns.get(item_id, 0)
+    if now - last_time < 60:
+        raise HTTPException(status_code=429, detail="Предмет временно недоступен. Повторите попытку позже.")
 
     item_name = f"Предмет ID {item_id}"
 
@@ -281,6 +245,10 @@ async def create_invoice(data: dict):
             currency="XTR",
             prices=[{"label": item_name, "amount": price_stars}]
         ))
+
+        # Обновляем кулдаун после успешного создания инвойса
+        item_cooldowns[item_id] = now
+
         return {"invoice_link": invoice_link}
     except Exception as e:
         print("[ERROR INVOICE] Telegram API error:", str(e))
