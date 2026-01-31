@@ -16,7 +16,7 @@ const userId = webApp.initDataUnsafe.user?.id || 'unknown';
 // Динамический backendUrl на основе текущего домена (работает на Railway, ngrok, localhost)
 const backendUrl = window.location.origin; // Например: https://your-project.up.railway.app
 
-const botUsername = 'bottest2314bot';
+const botUsername = 'QuestixMarketBot';
 
 let currentPage = 1;
 let hasMore = true;
