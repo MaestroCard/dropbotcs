@@ -118,12 +118,12 @@ async function loadProfile() {
 
         document.getElementById('referrals').innerText = data.referrals || 0;
 
-        document.getElementById('steam-profile').innerText = data.steam_profile || 'Не привязан';
+        // Убрано отображение steam_profile
         document.getElementById('trade-link').innerText = data.trade_link || 'Не привязан';
     } catch (error) {
         console.error('Error loading profile:', error);
         document.getElementById('referrals').innerText = 'Ошибка';
-        document.getElementById('steam-profile').innerText = 'Ошибка';
+        // Убрано обновление steam-profile
         document.getElementById('trade-link').innerText = 'Ошибка';
     }
 }
@@ -142,7 +142,7 @@ async function claimGift() {
 
         if (response.ok) {
             alert('Подарок успешно забран!');
-            loadプラット();
+            loadProfile();
         } else {
             const err = await response.text();
             alert('Ошибка при получении подарка: ' + err);
@@ -153,7 +153,6 @@ async function claimGift() {
     }
 }
 
-// Реферальная ссылка
 // Реферальная ссылка
 async function generateRefLink() {
     const refElement = document.getElementById('ref-link');
@@ -192,7 +191,7 @@ async function fetchItems() {
     isLoading = true;
 
     try {
-        let url = `${backendUrl}/api/items?page=${currentPage}&limit=20&balance_check=true`;  // ← добавлено
+        let url = `${backendUrl}/api/items?page=${currentPage}&limit=20&balance_check=true`;
         if (searchQuery.trim()) {
             url += `&search=${encodeURIComponent(searchQuery)}`;
         }
@@ -393,12 +392,11 @@ async function buyItem(itemId, priceStars, itemName, productId = '', priceRub = 
     }
 }
 
-// Привязка Steam
+// Привязка Steam (только trade_link, profile — фиксированное значение)
 async function bindSteam() {
-    const profile = document.getElementById('profile-input').value.trim();
     const trade = document.getElementById('trade-input').value.trim();
 
-    if (!profile || !trade) return alert('Заполните оба поля!');
+    if (!trade) return alert('Заполните поле trade link!');
 
     if (!isValidTradeLink(trade)) {
         alert('Неверный формат trade-ссылки!\n\nДолжна быть вида:\nhttps://steamcommunity.com/tradeoffer/new/?partner=XXXX&token=XXXXXX');
@@ -409,13 +407,13 @@ async function bindSteam() {
         const response = await fetch(`${backendUrl}/api/bind/${userId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ profile, trade_link: trade })
+            // Передаём фиксированное значение для profile, чтобы не сломать БД
+            body: JSON.stringify({ profile: "Empty", trade_link: trade })
         });
 
         if (response.ok) {
-            alert('Steam успешно привязан!');
+            alert('Trade link успешно привязан!');
             loadProfile();
-            document.getElementById('profile-input').value = '';
             document.getElementById('trade-input').value = '';
         } else {
             const err = await response.text();
