@@ -310,7 +310,7 @@ async def successful_payment_handler(message: types.Message):
                         f"💰 УСПЕШНАЯ ПРОДАЖА\n"
                         f"User ID: {user_id}\n"
                         f"Предмет: {product_id}\n"
-                        f"Сумма: {message.successful_payment.total_amount // 100} ⭐\n"
+                        f"Сумма: {actual_price_rub}\n"
                         f"Trade link: {user.trade_link}"
                     )
                 else:
