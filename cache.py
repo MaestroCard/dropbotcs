@@ -138,6 +138,7 @@ class ItemsCache:
                         if resp.status != 200:
                             if self._cache_not_getted:
                                 print(f"   Ошибка: статус {resp.status}")
+                                bot.send_message(OWNER_ID,f"   Ошибка: статус {resp.status}")
                                 self._cache_not_getted = False
                             continue
                         self._cache_not_getted = True
