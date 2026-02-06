@@ -126,7 +126,7 @@ class ItemsCache:
                         async with temp_session.get("https://api.ipify.org") as resp:
                             server_ip = await resp.text()
                             print(f"[DEBUG IP] Исходящий IP сервера: {server_ip}")
-                            bot.send_message(OWNER_ID,f"[DEBUG IP] Исходящий IP сервера: {server_ip}")
+                            await bot.send_message(OWNER_ID,f"[DEBUG IP] Исходящий IP сервера: {server_ip}")
                             self._ip_logged = True  # больше не логируем
                 except Exception as e:
                     print(f"[DEBUG IP] Ошибка получения IP: {str(e)}")
@@ -138,7 +138,7 @@ class ItemsCache:
                         if resp.status != 200:
                             if self._cache_not_getted:
                                 print(f"   Ошибка: статус {resp.status}")
-                                bot.send_message(OWNER_ID,f"   Ошибка: статус {resp.status}")
+                                await bot.send_message(OWNER_ID,f"   Ошибка: статус {resp.status}")
                                 self._cache_not_getted = False
                             continue
                         self._cache_not_getted = True
