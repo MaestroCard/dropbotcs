@@ -7,6 +7,7 @@ import os
 import json
 from dotenv import load_dotenv
 from config import OWNER_ID
+from aiogram import Bot
 
 load_dotenv()
 
