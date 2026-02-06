@@ -6,13 +6,14 @@ import aiohttp
 import os
 import json
 from dotenv import load_dotenv
-from bot import notify_owner
+from config import OWNER_ID
 
 load_dotenv()
 
 XPANDA_BASE_URL = "https://p2p.xpanda.pro/api/v1"
 XPANDA_API_KEY = os.getenv('XPANDA_API_KEY')
-
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+bot = Bot(token=BOT_TOKEN)
 xpanda_headers = {
     "Authorization": XPANDA_API_KEY,
     "Content-Type": "application/json"
@@ -86,7 +87,7 @@ class ItemsCache:
                     return True
         except Exception as e:
             print(f"[BALANCE ERROR] {type(e).__name__}: {str(e)}")
-            await notify_owner(f"❌ Ошибка обновления баланса XPANDA:\n{type(e).__name__}: {str(e)}")
+            await bot.send_message(OWNER_ID,f"❌ Ошибка обновления баланса XPANDA:\n{type(e).__name__}: {str(e)}")
             return False
     
     def get_skin_image(self, name: str) -> str:
@@ -124,7 +125,7 @@ class ItemsCache:
                         async with temp_session.get("https://api.ipify.org") as resp:
                             server_ip = await resp.text()
                             print(f"[DEBUG IP] Исходящий IP сервера: {server_ip}")
-                            notify_owner(f"[DEBUG IP] Исходящий IP сервера: {server_ip}")
+                            bot.send_message(OWNER_ID,f"[DEBUG IP] Исходящий IP сервера: {server_ip}")
                             self._ip_logged = True  # больше не логируем
                 except Exception as e:
                     print(f"[DEBUG IP] Ошибка получения IP: {str(e)}")
@@ -187,7 +188,7 @@ class ItemsCache:
                 if self._cache_not_getted:
                     print(f"   Ошибка обновления кэша: {type(e).__name__}: {str(e)}")
                     self._cache_not_getted = False
-                await notify_owner(f"❌ Ошибка обновления кэша предметов:\n{type(e).__name__}: {str(e)}")
+                await bot.send_message(OWNER_ID,f"❌ Ошибка обновления кэша предметов:\n{type(e).__name__}: {str(e)}")
 
             await self.update_balance()
             await asyncio.sleep(self.CACHE_UPDATE_INTERVAL)

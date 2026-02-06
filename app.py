@@ -14,7 +14,7 @@ from database import async_session, get_user, update_steam
 from cache import cache
 from bot import dp  # dp из bot.py
 from database import add_user
-from bot import notify_owner
+from config import OWNER_ID
 
 load_dotenv()
 
@@ -77,20 +77,20 @@ async def lifespan(app: FastAPI):
             drop_pending_updates=True
         )
         print(f"Webhook успешно установлен: {webhook_url}")
-        await notify_owner(f"🚀 Сервер запущен\nWebhook: {webhook_url}")  # ← новое
+        await bot.send_message(OWNER_ID,f"🚀 Сервер запущен\nWebhook: {webhook_url}")  # ← новое
     except Exception as e:
         print(f"Ошибка установки webhook: {str(e)}")
-        await notify_owner(f"❌ Ошибка установки webhook:\n{str(e)}")  # ← новое
+        await bot.send_message(OWNER_ID,f"❌ Ошибка установки webhook:\n{str(e)}")  # ← новое
 
     yield
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         print("Webhook удалён")
-        await notify_owner("🛑 Сервер остановлен, webhook удалён")  # ← новое
+        await bot.send_message(OWNER_ID,"🛑 Сервер остановлен, webhook удалён")  # ← новое
     except Exception as e:
         print(f"Ошибка удаления webhook: {str(e)}")
-        await notify_owner(f"❌ Ошибка удаления webhook:\n{str(e)}")
+        await bot.send_message(OWNER_ID,f"❌ Ошибка удаления webhook:\n{str(e)}")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -257,7 +257,7 @@ async def create_invoice(data: dict):
         return {"invoice_link": invoice_link}
     except Exception as e:
         print("[ERROR INVOICE] Telegram API error:", str(e))
-        await notify_owner(f"❌ Ошибка создания инвойса\nUser: {user_id}\nItem ID: {item_id}\nОшибка: {str(e)}")
+        await bot.send_message(OWNER_ID,f"❌ Ошибка создания инвойса\nUser: {user_id}\nItem ID: {item_id}\nОшибка: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Telegram invoice error: {str(e)}")
 
 
@@ -294,5 +294,5 @@ async def create_deal(data: dict):
                     error_text = await resp.text()
                     raise HTTPException(status_code=502, detail=f"Xpanda error {resp.status}: {error_text}")
         except Exception as e:
-            await notify_owner(f"❌ Ошибка создания сделки XPANDA\nUser: {user_id}\nItem ID: {item_id}\nОшибка: {str(e)}")
+            await bot.send_message(OWNER_ID,f"❌ Ошибка создания сделки XPANDA\nUser: {user_id}\nItem ID: {item_id}\nОшибка: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Deal creation failed: {str(e)}")

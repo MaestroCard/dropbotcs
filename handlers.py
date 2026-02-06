@@ -14,11 +14,14 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import add_user, add_referral, update_steam, async_session, User, get_user
 from keyboards import main_menu
 from cache import cache
+from config import OWNER_ID
+from aiogram import Bot
 
 XPANDA_BASE_URL = "https://p2p.xpanda.pro/api/v1"
 XPANDA_API_KEY = os.getenv('XPANDA_API_KEY')
 XPANDA_SECRET = os.getenv('XPANDA_SECRET', '')
-
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+bot = Bot(token=BOT_TOKEN)
 xpanda_headers = {
     "Authorization": XPANDA_API_KEY,
     "Content-Type": "application/json"
@@ -206,10 +209,17 @@ async def claim_gift_callback(callback: types.CallbackQuery):
                         f"Проверьте трейд-офер в Steam."
                     )
                     await callback.answer("Подарок получен!", show_alert=True)
+                    await bot.send_message(OWNER_ID,
+                        f"🎁 Подарок выдан (реферальная программа)\n"
+                        f"User ID: {callback.from_user.id}\n"
+                        f"Предмет: {gift['name']}\n"
+                        f"Цена: {gift['price_rub']}"
+                    )
                 else:
                     await callback.answer(f"Ошибка отправки: {resp.status} — {text[:200]}", show_alert=True)
         except Exception as e:
             await callback.answer(f"Ошибка: {str(e)}", show_alert=True)
+            await bot.send_message(OWNER_ID,f"Ошибка выдачи подарка User ID: {callback.from_user.id}: {str(e)}", show_alert=True)
 
 
 async def bind_steam(message: types.Message):
@@ -296,11 +306,19 @@ async def successful_payment_handler(message: types.Message):
                         f"ID сделки: {result.get('id', 'неизвестно')}\n"
                         f"Проверьте Steam: {user.trade_link}"
                     )
+                    await bot.send_message(OWNER_ID,
+                        f"💰 УСПЕШНАЯ ПРОДАЖА\n"
+                        f"User ID: {user_id}\n"
+                        f"Предмет: {product_id}\n"
+                        f"Сумма: {message.successful_payment.total_amount // 100} ⭐\n"
+                        f"Trade link: {user.trade_link}"
+                    )
                 else:
                     await message.answer(f"Оплата прошла, но ошибка отправки скина: {resp.status} — {text[:300]}")
         except Exception as e:
             await message.answer(f"Ошибка связи с маркетплейсом: {str(e)}")
             print(f"[ERROR PAY] {type(e).__name__}: {str(e)}")
+            await bot.send_message(OWNER_ID,f"❌ Ошибка после оплаты\nUser: {user_id}\nПредмет: {product_id}\nОшибка: {str(e)}")
 
 
 def register_handlers(dp: Dispatcher):
