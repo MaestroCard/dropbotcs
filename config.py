@@ -9,3 +9,5 @@ if OWNER_ID:
 else:
     OWNER_ID = None
     print("OWNER_ID не указан в .env — уведомления владельцу отключены")
+    
+REFERRALS_FOR_GIFT = int(os.getenv("REFERRALS_FOR_GIFT", "3"))

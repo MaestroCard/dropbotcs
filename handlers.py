@@ -14,7 +14,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import add_user, add_referral, update_steam, async_session, User, get_user
 from keyboards import main_menu
 from cache import cache
-from config import OWNER_ID
+from config import OWNER_ID, REFERRALS_FOR_GIFT
 from aiogram import Bot
 
 XPANDA_BASE_URL = "https://p2p.xpanda.pro/api/v1"
@@ -92,18 +92,19 @@ async def start_handler(message: types.Message):
             inviter = await get_user(ref_id)
             if inviter:
                 print(f"[REFERRAL] У инвайтера {ref_id} referrals теперь = {inviter.referrals}")
-                if inviter.referrals == 3 and not inviter.has_gift:
+                if inviter.referrals == REFERRALS_FOR_GIFT and not inviter.has_gift:
                     print("[REFERRAL] Отправляем уведомление о подарке инвайтеру")
                     markup = InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
-                    ]])
-                    await message.bot.send_message(
-                        ref_id,
-                        f"🎉 Поздравляем! Один из ваших рефералов присоединился — у вас теперь {inviter.referrals} рефералов!\n"
-                        f"Вы получаете подарок. Нажмите кнопку ниже, чтобы получить рандомный дешёвый скин в Steam.",
-                        reply_markup=markup
-                    )
-                    print("[REFERRAL] Уведомление отправлено")
+                ]])
+                await message.bot.send_message(
+                    ref_id,
+                    f"🎉 Поздравляем! Один из ваших рефералов присоединился — у вас теперь {inviter.referrals} рефералов!\n"
+                    f"Вы достигли {REFERRALS_FOR_GIFT} рефералов и получаете подарок!\n"
+                    f"Нажмите кнопку ниже, чтобы получить рандомный дешёвый скин в Steam.",
+                    reply_markup=markup
+                )
+                print("[REFERRAL] Уведомление отправлено")
         except Exception as e:
             print(f"[REFERRAL CRASH] Ошибка при обработке реферала: {type(e).__name__}: {str(e)}")
             import traceback
@@ -123,8 +124,8 @@ async def claim_gift_callback(callback: types.CallbackQuery):
         await callback.answer("Подарок уже получен!", show_alert=True)
         return
 
-    if user.referrals < 3:
-        await callback.answer("У вас ещё недостаточно рефералов!", show_alert=True)
+    if user.referrals < REFERRALS_FOR_GIFT:
+        await callback.answer(f"У вас ещё недостаточно рефералов! Нужно минимум {REFERRALS_FOR_GIFT}.", show_alert=True)
         return
 
     if not user.trade_link:
