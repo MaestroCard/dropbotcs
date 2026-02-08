@@ -142,3 +142,8 @@ async def update_steam(telegram_id: int, profile: str, trade_link: str):
                 print(f"Обновлены Steam данные для {telegram_id}")
             else:
                 print(f"Пользователь {telegram_id} не найден")
+                
+async def get_all_users() -> list[User]:
+    async with async_session() as session:
+        result = await session.execute(select(User))
+        return result.scalars().all()

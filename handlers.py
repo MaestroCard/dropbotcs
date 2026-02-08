@@ -5,13 +5,14 @@ import hmac
 import json
 import random
 import aiohttp
+import asyncio
 import os
 import uuid
 from datetime import datetime
 from aiogram import Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database import add_user, add_referral, update_steam, async_session, User, get_user
+from database import add_user, add_referral, update_steam, async_session, User, get_user, get_all_users
 from keyboards import main_menu
 from cache import cache
 from config import OWNER_ID, REFERRALS_FOR_GIFT
@@ -321,10 +322,51 @@ async def successful_payment_handler(message: types.Message):
             print(f"[ERROR PAY] {type(e).__name__}: {str(e)}")
             await bot.send_message(OWNER_ID,f"❌ Ошибка после оплаты\nUser: {user_id}\nПредмет: {product_id}\nОшибка: {str(e)}")
 
+async def broadcast_command(message: types.Message):
+    
+    if message.chat.id != OWNER_ID:
+        await message.answer("❌ У вас нет прав на эту команду.")
+        return
+
+    # Текст после команды /broadcast 
+    text = message.text[len("/broadcast"):].strip()
+    if not text:
+        await message.answer("⚠️ Укажите текст рассылки после команды.\nПример: /broadcast Акция обновлена! Теперь подарок за 5 рефералов 🎁")
+        return
+
+    await message.answer(f"🚀 Начинаю рассылку:\n\n{text}\n\nПользователей в базе: подождите, считаю...")
+
+    users = await get_all_users()
+    total = len(users)
+    sent = 0
+    failed = 0
+
+    await message.answer(f"Найдено пользователей: {total}. Начинаю отправку...")
+
+    for i, user in enumerate(users, 1):
+        try:
+            markup = main_menu()
+            await bot.send_message(user.telegram_id, text, reply_markup=markup)
+            sent += 1
+        except Exception as e:
+            # Блокировка пользователя, деактивированный аккаунт и т.д.
+            print(f"[BROADCAST] Ошибка отправки {user.telegram_id}: {str(e)}")
+            failed += 1
+
+        # Защита от лимитов Telegram (~30 сообщений/сек)
+        if i % 30 == 0:
+            await asyncio.sleep(1)
+
+        # Опционально: прогресс каждые 100 пользователей
+        if i % 100 == 0:
+            await message.answer(f"Обработано {i}/{total}...")
+
+    await message.answer(f"✅ Рассылка завершена!\nУспешно: {sent}\nОшибок: {failed}")
 
 def register_handlers(dp: Dispatcher):
     dp.message.register(start_handler, Command(commands=['start']))
     dp.message.register(bind_steam, Command(commands=['bind']))
+    dp.message.register(broadcast_command, Command(commands=['broadcast']))
     dp.pre_checkout_query.register(pre_checkout_query_handler)
     dp.message.register(successful_payment_handler, lambda m: m.successful_payment is not None)
     dp.callback_query.register(claim_gift_callback, lambda c: c.data == "claim_gift")
