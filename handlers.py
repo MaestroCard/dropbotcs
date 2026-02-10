@@ -162,7 +162,7 @@ async def claim_gift_callback(callback: types.CallbackQuery):
 
     custom_id = f"gift_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
 
-    max_price = int(actual_price_rub * 1.1)
+    max_price = int(actual_price_rub * 1.2)
 
     params = {
         "product": gift['product_id'],
@@ -263,7 +263,7 @@ async def successful_payment_handler(message: types.Message):
         await message.answer("Ошибка: Не удалось найти актуальную цену предмета. Попробуйте позже.")
         return
 
-    max_price = int(actual_price_rub * 1.1)
+    max_price = int(actual_price_rub * 1.2)
 
     params = {
         "product": product_id,
