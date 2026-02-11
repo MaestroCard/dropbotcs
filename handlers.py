@@ -93,7 +93,7 @@ async def start_handler(message: types.Message):
             inviter = await get_user(ref_id)
             if inviter:
                 print(f"[REFERRAL] У инвайтера {ref_id} referrals теперь = {inviter.referrals}")
-                if inviter.referrals == REFERRALS_FOR_GIFT and not inviter.has_gift:
+                if inviter.referrals >= REFERRALS_FOR_GIFT and not inviter.has_gift:
                     print("[REFERRAL] Отправляем уведомление о подарке инвайтеру")
                     markup = InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
