@@ -93,7 +93,7 @@ async def start_handler(message: types.Message):
             inviter = await get_user(ref_id)
             if inviter:
                 print(f"[REFERRAL] У инвайтера {ref_id} referrals теперь = {inviter.referrals}")
-                if inviter.referrals >= REFERRALS_FOR_GIFT and not inviter.has_gift:
+                if inviter.referrals >= REFERRALS_FOR_GIFT:
                     print("[REFERRAL] Отправляем уведомление о подарке инвайтеру")
                     markup = InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
@@ -101,8 +101,7 @@ async def start_handler(message: types.Message):
                 await message.bot.send_message(
                     ref_id,
                     f"🎉 Поздравляем! Один из ваших рефералов присоединился — у вас теперь {inviter.referrals} рефералов!\n"
-                    f"Вы достигли {REFERRALS_FOR_GIFT} рефералов и получаете подарок!\n"
-                    f"Нажмите кнопку ниже, чтобы получить рандомный дешёвый скин в Steam.",
+                    f"Нажмите кнопку ниже, чтобы получить рандомный скин в Steam.",
                     reply_markup=markup
                 )
                 print("[REFERRAL] Уведомление отправлено")
@@ -121,9 +120,9 @@ async def claim_gift_callback(callback: types.CallbackQuery):
         await callback.answer("Пользователь не найден", show_alert=True)
         return
 
-    if user.has_gift:
-        await callback.answer("Подарок уже получен!", show_alert=True)
-        return
+    # if user.has_gift:
+    #     await callback.answer("Подарок уже получен!", show_alert=True)
+    #     return
 
     if user.referrals < REFERRALS_FOR_GIFT:
         await callback.answer(f"У вас ещё недостаточно рефералов! Нужно минимум {REFERRALS_FOR_GIFT}.", show_alert=True)
@@ -206,8 +205,8 @@ async def claim_gift_callback(callback: types.CallbackQuery):
                             session.add(user)
 
                     await callback.message.edit_text(
-                        f"🎉 Подарок успешно отправлен в Steam!\n"
-                        f"**{gift['name']}** за {gift['price_stars']} ⭐\n"
+                        f"🎉 Подарок будет отправлен в течение 5 минут!\n"
+                        f"{gift['name']} за {gift['price_stars']} ⭐\n"
                         f"Проверьте трейд-офер в Steam."
                     )
                     await callback.answer("Подарок получен!", show_alert=True)
@@ -215,6 +214,7 @@ async def claim_gift_callback(callback: types.CallbackQuery):
                         f"🎁 Подарок выдан (реферальная программа)\n"
                         f"User ID: {callback.from_user.id}\n"
                         f"Предмет: {gift['name']}\n"
+                        f"Custom id: {custom_id}\n"
                         f"Цена: {gift['price_rub']}"
                     )
                 else:
