@@ -23,6 +23,142 @@ let hasMore = true;
 let isLoading = false;
 let searchQuery = '';
 
+async function startGiftAnimation() {
+    // Переключаем вкладку
+    switchTab('gift-animation');
+    
+    const titleEl = document.getElementById('case-title');
+    const rollContainer = document.getElementById('case-roll');
+    const resultScreen = document.getElementById('result-screen');
+
+    // 1. Показываем загрузку
+    titleEl.textContent = 'Загружаем кейс...';
+    resultScreen.style.display = 'none';
+    rollContainer.innerHTML = '<div style="color:#64748b;padding:20px;">Загрузка...</div>';
+
+    // 2. Параллельно: получаем предметы И выдаём подарок
+    let caseItems = [];
+    let wonData = null;
+    
+    try {
+        const [itemsResp, claimResp] = await Promise.all([
+            fetch(`${backendUrl}/api/gift_items`),
+            fetch(`${backendUrl}/api/claim_gift/${userId}`, { method: 'POST' })
+        ]);
+        
+        if (itemsResp.ok) {
+            const data = await itemsResp.json();
+            caseItems = data.items || [];
+        }
+        
+        if (!claimResp.ok) {
+            let errorMsg = 'Ошибка при открытии кейса';
+            try {
+                const errData = await claimResp.json();
+                errorMsg = errData.detail || errorMsg;
+            } catch {}
+            alert(errorMsg);
+            switchTab('profile');
+            return;
+        }
+        wonData = await claimResp.json();
+    } catch (e) {
+        console.error('Ошибка:', e);
+        alert('Ошибка сети. Попробуйте позже.');
+        switchTab('profile');
+        return;
+    }
+
+    // Fallback предметы
+    if (caseItems.length === 0) {
+        caseItems = [
+            { image: 'https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1Z-ua6bbZrLOmsD2avx-9ytd5lRi67gVNwsDvSwtqqc3iXZg4kCZYjReYLtRbum9XgYuvm5wbWjtgUzCn3iSsf8G81tFEeH9rw', name: 'AK-47' },
+            { image: 'https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwiYbf_jdk7uW-V6V-Kf2cGFidxOp_pewnF3nhxEt0sGnSzN76dH3GOg9xC8FyEORftRe-x9PuYurq71bW3d8UnjK-0H0YSTpMGQ', name: 'Butterfly' },
+            { image: 'https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL8ypexwjFS4_ega6F_H_OGMWrEwL9JuPh5SjuMlxgmoCm6lob-KT-JbwF1WZEjR-YJskK9k9XiYePltAeNjYlAxSn5j34dvCZstb4LB6Ut-7qX0V8Xkv5_2A', name: 'AWP' },
+            { image: 'https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLhx8bf_Cxk_f23aahvLPWWClicyOl-pK8_Sn_rwE1x5z6AyY6qeXmRb1cgWMNwR7Ff4Bm_m9y0Przq4A3b348Q02yg2QQMyM9M', name: 'M4A4' },
+            { image: 'https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_frnEVvqf_a6VoIfGSXz7Hlbwg57QwSS_mxhl15jiGyN37c3_GZw91W8BwRflK7EfKsa2sfw', name: 'Case' },
+            { image: 'https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu4vx603vRA_Olpfu-TVJ7uK9V6xsLvSEHGaA_uJzsfVhSjuqqhsmsS-MmbD-KDnGOFB1Zc4pEr9OrBm6w9bgM-Pi4wLe34tNnCT3jCxJ53s_6rsBUqQkq63V2wnBZOJo55YdZKHw2FL19Wg', name: 'Gloves' }
+        ];
+    }
+
+    // 3. Строим ленту: случайные предметы + ВЫИГРЫШНЫЙ в ЦЕНТРЕ + ещё случайные
+    titleEl.textContent = 'Открываем кейс...';
+    rollContainer.innerHTML = '';
+    
+    // Сбрасываем анимации
+    rollContainer.style.animation = 'none';
+    rollContainer.style.transition = 'none';
+    rollContainer.style.transform = 'translateX(0)';
+    
+    // Размеры предмета (ширина + margin*2)
+    const itemWidth = 170; // 140px + 15px с каждой стороны
+    
+    // Создаём ленту: 29 случайных + ВЫИГРЫШНЫЙ + 11 случайных
+    let html = '';
+    const itemsBeforeWinner = 29;
+    const itemsAfterWinner = 11;
+    
+    // Предметы ДО выигрышного
+    for (let i = 0; i < itemsBeforeWinner; i++) {
+        const randomItem = caseItems[Math.floor(Math.random() * caseItems.length)];
+        html += `<img src="${randomItem.image}" alt="${randomItem.name}" class="roll-item">`;
+    }
+    
+    // ВЫИГРЫШНЫЙ предмет (в ЦЕНТРЕ ленты)
+    html += `<img src="${wonData.image}" alt="${wonData.name}" class="roll-item" data-winner="true">`;
+    
+    // Предметы ПОСЛЕ выигрышного
+    for (let i = 0; i < itemsAfterWinner; i++) {
+        const randomItem = caseItems[Math.floor(Math.random() * caseItems.length)];
+        html += `<img src="${randomItem.image}" alt="${randomItem.name}" class="roll-item">`;
+    }
+    
+    rollContainer.innerHTML = html;
+
+    // 4. Получаем актуальную ширину контейнера ПОСЛЕ рендера
+    const caseContainer = document.getElementById('case-container');
+    const containerWidth = caseContainer.getBoundingClientRect().width;
+    
+    // 5. Случайная позиция от -4960px до -4980px для точного попадания под полоску
+    const finalPosition = 4960 + Math.floor(Math.random() * 21); // 4960-4980
+
+    // 6. Запускаем анимацию с замедлением
+    rollContainer.style.transition = 'transform 6s cubic-bezier(0.1, 0.5, 0.2, 1)';
+    rollContainer.style.transform = `translateX(-${finalPosition}px)`;
+
+    // 7. Через 6 секунд показываем результат
+    setTimeout(() => {
+        titleEl.textContent = '🎉 Выпал скин!';
+        
+        // Через 300ms подсвечиваем выигрышный скин (после полной остановки)
+        setTimeout(() => {
+            const winnerEl = rollContainer.querySelector('[data-winner="true"]');
+            if (winnerEl) {
+                winnerEl.style.boxShadow = '0 0 30px #fbbf24, 0 0 60px #fbbf24';
+                winnerEl.style.border = '3px solid #fbbf24';
+                winnerEl.style.transform = 'scale(1.1)';
+                winnerEl.style.transition = 'all 0.3s ease';
+                winnerEl.style.zIndex = '100';
+            }
+        }, 300);
+        
+        // Показываем результат с задержкой
+        setTimeout(() => {
+            titleEl.textContent = '🎉 Ваш подарок!';
+            
+            resultScreen.innerHTML = `
+                <div style="background:#1e293b; border-radius:20px; padding:25px; margin:20px auto; max-width:340px; box-shadow:0 0 60px rgba(251,191,36,0.5); animation:fadeIn 0.5s ease;">
+                    <img src="${wonData.image}" style="width:100%; border-radius:16px; margin-bottom:15px; box-shadow:0 15px 35px rgba(0,0,0,0.8); animation:pulse 2s infinite;">
+                    <h3 style="margin:10px 0; color:#fbbf24; font-size:20px;">${wonData.name}</h3>
+                    <p style="color:#94a3b8; margin:5px 0; font-size:14px;">ID сделки: <code>${wonData.deal_id}</code></p>
+                    <p style="color:#4ade80; font-weight:600; margin:10px 0;">✅ Отправлен в трейд!</p>
+                    <button class="btn" onclick="switchTab('profile')" style="margin-top:20px; width:100%; background:linear-gradient(135deg, #3b82f6, #8b5cf6);">В профиль</button>
+                </div>
+            `;
+            resultScreen.style.display = 'block';
+        }, 800);
+    }, 6000);
+}
 // Переключение вкладок
 function switchTab(tabId) {
     document.querySelectorAll('section').forEach(sec => sec.classList.remove('active'));
@@ -429,6 +565,10 @@ async function bindSteam() {
 generateRefLink();
 loadProfile();
 switchTab('landing');
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('mode') === 'claim_gift') {
+    startGiftAnimation();
+}
 
 console.log("Мини-приложение запущено");
 console.log("Версия app.js: 2026-01-29-v4");

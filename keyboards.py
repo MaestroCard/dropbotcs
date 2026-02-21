@@ -20,6 +20,18 @@ def get_webapp_url() -> str:
     # Формируем полный путь
     return f"{protocol}://{domain}/web_app/index.html"
 
+def gift_animation_keyboard():
+    builder = InlineKeyboardBuilder()
+    
+    webapp_url = get_webapp_url() + "?mode=claim_gift"  # Добавляем параметр
+    
+    builder.add(InlineKeyboardButton(
+        text="Открыть кейс и получить подарок 🎁",
+        web_app=WebAppInfo(url=webapp_url)
+    ))
+    
+    builder.adjust(1)
+    return builder.as_markup()
 
 def main_menu():
     builder = InlineKeyboardBuilder()

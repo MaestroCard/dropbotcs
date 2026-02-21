@@ -179,6 +179,28 @@
             margin-top: 20px;
         }
 
+        #gift-animation {
+            text-align: center;
+            padding: 20px;
+        }
+        .animation-container {
+            position: relative;
+            height: 80vh;
+            overflow: hidden;
+        }
+        .spinner {
+            margin-top: 50px;
+            font-size: 18px;
+            color: #60a5fa;
+        }
+        .revealed-skin {
+            animation: fadeIn 1s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
         /* Анимация падающих скинов */
         #landing {
             position: relative;
@@ -234,6 +256,8 @@
         .case-roll {
             display: flex;
             width: max-content;
+        }
+        .case-roll.infinite {
             animation: roll 5s linear infinite;
         }
         .case-roll img {
@@ -262,6 +286,53 @@
             box-shadow: 0 0 20px #ffd700;
             z-index: 2;
             pointer-events: none;
+        }
+        .case-roll img {
+            width: 155px;
+            height: 115px;
+            object-fit: cover;
+            margin: 0 15px;
+            border-radius: 14px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            flex-shrink: 0;
+            border: 3px solid #334155;
+        }
+
+        /* Стили для рулетки открытия кейса */
+        #case-roll {
+            display: flex;
+            height: 100%;
+            align-items: center;
+            will-change: transform;
+        }
+        #case-roll img {
+            width: 140px;
+            height: 100px;
+            object-fit: cover;
+            margin: 0 15px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.6);
+            flex-shrink: 0;
+            border: 3px solid #475569;
+            transition: all 0.3s ease;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+        @keyframes fadeInUp {
+            from { 
+                opacity: 0; 
+                transform: translateY(30px);
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0);
+            }
+        }
+        #result-screen > div {
+            animation: fadeInUp 0.6s ease;
         }
     </style>
 </head>
@@ -311,7 +382,7 @@
         <!-- НОВАЯ АНИМАЦИЯ: бесконечная бегущая лента скинов (как при открытии кейса) -->
         <div class="case-roll-container">
             <div style="position: relative;">
-                <div class="case-roll">
+                <div class="case-roll infinite">
                     <!-- Первая копия списка скинов -->
                     <img src="https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu4vx603vRA_Olpfu-TVJ7uK9V6xsLvSEHGaA_uJzsfVhSjuqqhsmsS-MmbD-KDnGOFB1Zc4pEr9OrBm6w9bgM-Pi4wLe34tNnCT3jCxJ53s_6rsBUqQkq63V2wnBZOJo55YdZKHw2FL19Wg" alt="Hand Wraps">
                     <img src="https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1Z-ua6bbZrLOmsD2avx-9ytd5lRi67gVNwsDvSwtqqc3iXZg4kCZYjReYLtRbum9XgYuvm5wbWjtgUzCn3iSsf8G81tFEeH9rw" alt="AK Redline">
@@ -377,7 +448,25 @@
         </div>
     </section>
 
-    <script src="app.js"></script>
+    <section id="gift-animation">
+        <div class="case-opening" style="text-align:center; padding:20px 10px;">
+            <h2 id="case-title" style="margin-bottom:30px; font-size:24px; color:#fbbf24;">Открываем подарочный кейс...</h2>
+            
+            <div id="case-container" style="position:relative; height:220px; overflow:hidden; background:#1e293b; border-radius:20px; margin:0 auto 30px; max-width:520px; box-shadow:0 15px 40px rgba(0,0,0,0.6);">
+                <div id="case-roll">
+                    <!-- JS заполнит -->
+                </div>
+                <!-- Центральный золотой указатель -->
+                <div style="position:absolute; top:0; left:50%; transform:translateX(-50%); width:4px; height:100%; background:linear-gradient(transparent,#fbbf24,#fbbf24,transparent); box-shadow:0 0 20px #fbbf24; z-index:10; pointer-events:none;"></div>
+            </div>
+
+            <div id="result-screen" style="display:none;">
+                <!-- JS вставит результат -->
+            </div>
+        </div>
+    </section>
+
+    <script src="app.js?v=15"></script>
     <script>
         // Рандомизация позиций, задержек и длительности падающих скинов
         function randomizeSkins() {

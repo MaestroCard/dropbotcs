@@ -17,6 +17,7 @@ from keyboards import main_menu
 from cache import cache
 from config import OWNER_ID, REFERRALS_FOR_GIFT
 from aiogram import Bot
+from keyboards import gift_animation_keyboard
 
 XPANDA_BASE_URL = "https://p2p.xpanda.pro/api/v1"
 XPANDA_API_KEY = os.getenv('XPANDA_API_KEY')
@@ -96,12 +97,12 @@ async def start_handler(message: types.Message):
                 if inviter.referrals >= REFERRALS_FOR_GIFT:
                     print("[REFERRAL] Отправляем уведомление о подарке инвайтеру")
                     markup = InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
+                        InlineKeyboardButton(text="Забрать кейс 🎁", callback_data="claim_gift")
                 ]])
                 await message.bot.send_message(
                     ref_id,
                     f"🎉 Поздравляем! Один из ваших рефералов присоединился — у вас теперь {inviter.referrals} рефералов!\n"
-                    f"Нажмите кнопку ниже, чтобы получить рандомный скин в Steam.",
+                    f"Нажмите кнопку ниже, чтобы получить кейс со случайным скином.",
                     reply_markup=markup
                 )
                 print("[REFERRAL] Уведомление отправлено")
@@ -115,114 +116,36 @@ async def start_handler(message: types.Message):
 
 
 async def claim_gift_callback(callback: types.CallbackQuery):
-    user = await get_user(callback.from_user.id)
-    if not user:
-        await callback.answer("Пользователь не найден", show_alert=True)
-        return
+    user_id = callback.from_user.id
+    async with async_session() as session:
+        async with session.begin():
+            user = await get_user(user_id, session)
+            if not user:
+                await callback.answer("Пользователь не найден", show_alert=True)
+                return
 
-    # if user.has_gift:
-    #     await callback.answer("Подарок уже получен!", show_alert=True)
-    #     return
+            if user.has_gift:
+                await callback.answer("У вас уже есть один неоткрытый подарок. Сначала откройте кейс!", show_alert=True)
+                return
 
-    if user.referrals < REFERRALS_FOR_GIFT:
-        await callback.answer(f"У вас ещё недостаточно рефералов! Нужно минимум {REFERRALS_FOR_GIFT}.", show_alert=True)
-        return
+            if user.referrals < REFERRALS_FOR_GIFT:
+                await callback.answer("Недостаточно рефералов для подарка", show_alert=True)
+                return
 
-    if not user.trade_link:
-        await callback.answer("Сначала привяжите trade link в профиле!", show_alert=True)
-        return
+            if not user.trade_link:
+                await callback.answer("Сначала привяжите trade-link в профиле", show_alert=True)
+                return
 
-    trade_params = parse_trade_link(user.trade_link)
-    if not trade_params:
-        await callback.answer("Неверный формат trade-ссылки. Проверьте ссылку в профиле!", show_alert=True)
-        return
+            # Активируем подарок
+            user.has_gift = True
+            session.add(user)
 
-    cheap_items = sorted(cache.all_items, key=lambda x: x["price_stars"])[:int(os.getenv("CHEAP_ITEMS_COUNT", 5))]
-    if not cheap_items:
-        await callback.answer("Подарков пока нет. Попробуйте позже!", show_alert=True)
-        return
+    # Редактируем сообщение: меняем на web_app кнопку
+    new_text = "Кейс активирован! Нажмите ниже, чтобы открыть и увидеть подарок!"
+    new_markup = gift_animation_keyboard()  # Из keyboards.py
 
-    gift = random.choice(cheap_items)
-
-    actual_price_rub = gift.get("price_rub", 0)
-
-    if actual_price_rub <= 0:
-        await callback.answer("Ошибка: Не удалось определить цену подарка", show_alert=True)
-        return
-
-    # Проверка баланса перед выдачей подарка
-    available_balance = await get_actual_balance()
-    if available_balance is None or available_balance < actual_price_rub:
-        await callback.answer(
-            "Предмет временно недоступен. Повторите попытку позже.",
-            show_alert=True
-        )
-        return
-
-    custom_id = f"gift_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
-
-    max_price = int(actual_price_rub * 1.2)
-
-    params = {
-        "product": gift['product_id'],
-        "partner": trade_params["partner"],
-        "token": trade_params["token"],
-        "max_price": max_price,
-        "custom_id": custom_id,
-    }
-
-    params_list = [f"{k}:{v}" for k, v in sorted(params.items()) if v is not None]
-    params_string = ';'.join(params_list)
-
-    sign = hmac.new(
-        XPANDA_SECRET.encode(),
-        params_string.encode(),
-        hashlib.sha256
-    ).hexdigest()
-
-    params["sign"] = sign
-
-    url = f"{XPANDA_BASE_URL}/purchases/"
-
-    print(f"[DEBUG GIFT] Отправка подарка на: {url}")
-    print(f"[DEBUG GIFT] Payload: {json.dumps(params, indent=2, ensure_ascii=False)}")
-
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(
-                url,
-                json=params,
-                headers=xpanda_headers,
-                timeout=30
-            ) as resp:
-                text = await resp.text()
-                print(f"[DEBUG GIFT] Статус: {resp.status}, Ответ: {text[:500]}...")
-
-                if resp.status in [200, 201]:
-                    user.has_gift = True
-                    async with async_session() as session:
-                        async with session.begin():
-                            session.add(user)
-
-                    await callback.message.edit_text(
-                        f"🎉 Подарок будет отправлен в течение 5 минут!\n"
-                        f"{gift['name']} за {gift['price_stars']} ⭐\n"
-                        f"Проверьте трейд-офер в Steam."
-                    )
-                    await callback.answer("Подарок получен!", show_alert=True)
-                    await bot.send_message(OWNER_ID,
-                        f"🎁 Подарок выдан (реферальная программа)\n"
-                        f"User ID: {callback.from_user.id}\n"
-                        f"Предмет: {gift['name']}\n"
-                        f"Custom id: {custom_id}\n"
-                        f"Цена: {gift['price_rub']}"
-                    )
-                else:
-                    await callback.answer(f"Ошибка отправки: {resp.status} — {text[:200]}", show_alert=True)
-        except Exception as e:
-            await callback.answer(f"Ошибка: {str(e)}", show_alert=True)
-            await bot.send_message(OWNER_ID,f"Ошибка выдачи подарка User ID: {callback.from_user.id}: {str(e)}", show_alert=True)
-
+    await callback.message.edit_text(new_text, reply_markup=new_markup)
+    await callback.answer("Кейс активирован!")
 
 async def bind_steam(message: types.Message):
     parts = message.text.split()
@@ -364,10 +287,34 @@ async def broadcast_command(message: types.Message):
 
     await message.answer(f"✅ Рассылка завершена!\nУспешно: {sent}\nОшибок: {failed}")
 
+async def reset_gifts_command(message: types.Message):
+    """Сбрасывает has_gift=False у всех пользователей (для миграции на новую механику)"""
+    if message.chat.id != OWNER_ID:
+        await message.answer("❌ У вас нет прав на эту команду.")
+        return
+    
+    from sqlalchemy import update
+    from database import async_session, User
+    
+    await message.answer("🔄 Сбрасываю has_gift у всех пользователей...")
+    
+    try:
+        async with async_session() as session:
+            result = await session.execute(
+                update(User).values(has_gift=False)
+            )
+            await session.commit()
+            count = result.rowcount
+            
+        await message.answer(f"✅ Готово! Сброшено записей: {count}")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
+
 def register_handlers(dp: Dispatcher):
     dp.message.register(start_handler, Command(commands=['start']))
     dp.message.register(bind_steam, Command(commands=['bind']))
     dp.message.register(broadcast_command, Command(commands=['broadcast']))
+    dp.message.register(reset_gifts_command, Command(commands=['reset_gifts']))
     dp.pre_checkout_query.register(pre_checkout_query_handler)
     dp.message.register(successful_payment_handler, lambda m: m.successful_payment is not None)
     dp.callback_query.register(claim_gift_callback, lambda c: c.data == "claim_gift")
