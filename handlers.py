@@ -13,6 +13,7 @@ from aiogram import Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import add_user, add_referral, update_steam, async_session, User, get_user, get_all_users
+from sqlalchemy import select, func
 from keyboards import main_menu
 from cache import cache
 from config import OWNER_ID, REFERRALS_FOR_GIFT
@@ -310,11 +311,51 @@ async def reset_gifts_command(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
 
+async def stats_command(message: types.Message):
+    """Показывает статистику бота (только для владельца)"""
+    if message.chat.id != OWNER_ID:
+        await message.answer("❌ У вас нет прав на эту команду.")
+        return
+    
+    from sqlalchemy import func
+    from database import async_session, User
+    
+    try:
+        async with async_session() as session:
+            # Общее количество пользователей
+            total_users = await session.scalar(select(func.count(User.telegram_id)))
+            
+            # Количество с привязанным trade_link
+            with_trade = await session.scalar(
+                select(func.count(User.telegram_id)).where(User.trade_link != None)
+            )
+            
+            # Количество с активными подарками
+            with_gift = await session.scalar(
+                select(func.count(User.telegram_id)).where(User.has_gift == True)
+            )
+            
+            # Сумма рефералов
+            total_referrals = await session.scalar(select(func.sum(User.referrals)))
+            
+        stats_text = (
+            f"📊 <b>Статистика бота</b>\n\n"
+            f"👥 Всего пользователей: <b>{total_users}</b>\n"
+            f"🔗 С привязанным Steam: <b>{with_trade}</b>\n"
+            f"🎁 С активными подарками: <b>{with_gift}</b>\n"
+            f"📈 Всего рефералов: <b>{total_referrals or 0}</b>"
+        )
+        
+        await message.answer(stats_text, parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка получения статистики: {str(e)}")
+
 def register_handlers(dp: Dispatcher):
     dp.message.register(start_handler, Command(commands=['start']))
     dp.message.register(bind_steam, Command(commands=['bind']))
     dp.message.register(broadcast_command, Command(commands=['broadcast']))
     dp.message.register(reset_gifts_command, Command(commands=['reset_gifts']))
+    dp.message.register(stats_command, Command(commands=['stats']))
     dp.pre_checkout_query.register(pre_checkout_query_handler)
     dp.message.register(successful_payment_handler, lambda m: m.successful_payment is not None)
     dp.callback_query.register(claim_gift_callback, lambda c: c.data == "claim_gift")
