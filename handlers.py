@@ -256,7 +256,7 @@ async def broadcast_command(message: types.Message):
     # Текст после команды /broadcast 
     text = message.text[len("/broadcast"):].strip()
     if not text:
-        await message.answer("⚠️ Укажите текст рассылки после команды.\nПример: /broadcast Акция обновлена! Теперь подарок за 5 рефералов 🎁")
+        await message.answer("⚠️ Укажите текст рассылки после команды.\nПример: /broadcast Акция! Теперь за каждого реферала — кейс со случайным скином 🎁")
         return
 
     await message.answer(f"🚀 Начинаю рассылку:\n\n{text}\n\nПользователей в базе: подождите, считаю...")
@@ -350,12 +350,88 @@ async def stats_command(message: types.Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка получения статистики: {str(e)}")
 
+async def promo_gift_command(message: types.Message):
+    """Массовая рассылка с кнопкой активации кейса (только для владельца)"""
+    if message.chat.id != OWNER_ID:
+        await message.answer("❌ У вас нет прав на эту команду.")
+        return
+    
+    # Получаем текст после команды
+    text = message.text[len("/promo_gift"):].strip()
+    if not text:
+        text = "🎁 Специальное предложение! У вас есть подарочный кейс со случайным скином CS2!"
+    
+    await message.answer(f"🚀 Начинаю рассылку...\n\nТекст:\n{text}")
+    
+    users = await get_all_users()
+    total = len(users)
+    sent = 0
+    failed = 0
+    
+    # Кнопка для активации подарка (не webapp!)
+    markup = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Получить кейс 🎁", callback_data="promo_claim")
+    ]])
+    
+    for i, user in enumerate(users, 1):
+        try:
+            await bot.send_message(
+                user.telegram_id,
+                text,
+                reply_markup=markup
+            )
+            sent += 1
+        except Exception as e:
+            print(f"[PROMO GIFT] Ошибка отправки {user.telegram_id}: {str(e)}")
+            failed += 1
+        
+        # Защита от лимитов
+        if i % 30 == 0:
+            await asyncio.sleep(1)
+        
+        if i % 100 == 0:
+            await message.answer(f"Обработано {i}/{total}...")
+    
+    await message.answer(f"✅ Рассылка завершена!\nУспешно: {sent}\nОшибок: {failed}")
+
+
+async def promo_claim_callback(callback: types.CallbackQuery):
+    """Обработчик нажатия на кнопку 'Получить кейс' из promo рассылки"""
+    user_id = callback.from_user.id
+    async with async_session() as session:
+        async with session.begin():
+            user = await get_user(user_id, session)
+            if not user:
+                await callback.answer("Пользователь не найден", show_alert=True)
+                return
+
+            if user.has_gift:
+                await callback.answer("У вас уже есть неоткрытый кейс. Сначала откройте его!", show_alert=True)
+                return
+
+            if not user.trade_link:
+                await callback.answer("Сначала привяжите trade-link в профиле", show_alert=True)
+                return
+
+            # Активируем подарок
+            user.has_gift = True
+            session.add(user)
+
+    # Меняем на кнопку WebApp для открытия кейса
+    new_text = "🎉 Кейс активирован! Нажмите ниже, чтобы открыть и увидеть подарок!"
+    new_markup = gift_animation_keyboard()
+
+    await callback.message.edit_text(new_text, reply_markup=new_markup)
+    await callback.answer("Кейс активирован!")
+
 def register_handlers(dp: Dispatcher):
     dp.message.register(start_handler, Command(commands=['start']))
     dp.message.register(bind_steam, Command(commands=['bind']))
     dp.message.register(broadcast_command, Command(commands=['broadcast']))
     dp.message.register(reset_gifts_command, Command(commands=['reset_gifts']))
     dp.message.register(stats_command, Command(commands=['stats']))
+    dp.message.register(promo_gift_command, Command(commands=['promo_gift']))
     dp.pre_checkout_query.register(pre_checkout_query_handler)
     dp.message.register(successful_payment_handler, lambda m: m.successful_payment is not None)
     dp.callback_query.register(claim_gift_callback, lambda c: c.data == "claim_gift")
+    dp.callback_query.register(promo_claim_callback, lambda c: c.data == "promo_claim")

@@ -320,10 +320,10 @@ function shareLink() {
     const refText = document.getElementById('ref-link').innerText || '';
     if (!refText) return;
     
-    const shareText = `Пригласи друга в CS2 Marketplace и получи скин бесплатно! ${refText}`;
+    const shareText = `Пригласи друга в CS2 Marketplace и получи кейс со случайным скином! ${refText}`;
     
     // Открываем нативный диалог шаринга Telegram с выбором чата
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(refText)}&text=${encodeURIComponent('Пригласи друга в CS2 Marketplace и получи скин бесплатно! 🎁')}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(refText)}&text=${encodeURIComponent('Пригласи друга в CS2 Marketplace и получи кейс со случайным скином! 🎁')}`;
     
     webApp.openTelegramLink(shareUrl);
 }

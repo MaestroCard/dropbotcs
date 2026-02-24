@@ -68,7 +68,7 @@ async def send_gift_notifications(user_id: int, skin_name: str, skin_image: str,
             f"✅ ПОДАРОК ВЫДАН\n"
             f"User: {user_id}\n"
             f"Скин: {skin_name}\n"
-            f"Цена: {price_rub} руб\n"
+            f"Цена: ${price_rub / 1000:.2f}\n"
             f"Deal ID: {deal_id}\n"
             f"Trade link: {trade_link}"
         )
