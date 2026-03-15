@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    restart: always
+    environment:
+      - BOT_TOKEN=your_bot_token_here
+      - XPANDA_API_KEY=your_xpanda_key_here
+      - XPANDA_SECRET=your_xpanda_secret_here
+    volumes:
+      - ./users.db:/app/users.db  # если используешь SQLite
+    ports:
+      - "8000:8000"  # для FastAPI (если нужен доступ извне)

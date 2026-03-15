@@ -5,6 +5,7 @@ import asyncio
 import aiohttp
 import os
 import json
+import math
 from dotenv import load_dotenv
 from config import OWNER_ID
 from aiogram import Bot
@@ -31,6 +32,8 @@ class ItemsCache:
             cls._instance.all_items = []
             cls._instance.cache_timestamp = None
             cls._instance.CACHE_UPDATE_INTERVAL = int(os.getenv("CACHE_UPDATE_INTERVAL", 300))
+            cls._instance.usd_rate = 92.0  # Курс по умолчанию
+            cls._instance.rate_last_updated = None
         return cls._instance
 
     def __init__(self):
@@ -44,6 +47,10 @@ class ItemsCache:
             "available": 0
         }
         self.balance_last_updated = None
+        # Наценка в рублях
+        self.markup = 2  # +2 рубля к цене
+        # Комиссия Cardlink (чтобы цена в боте совпадала с ценой в Cardlink)
+        self.cardlink_commission = 0.042  # ~4.2%
 
         try:
             with open('data/skins.json', 'r', encoding='utf-8') as f:
@@ -63,6 +70,28 @@ class ItemsCache:
         except FileNotFoundError:
             print("stickers.json не найден")
 
+    async def update_usd_rate(self):
+        """Обновляет курс USD/RUB с ЦБ РФ"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Используем API ЦБ РФ
+                url = "https://www.cbr-xml-daily.ru/daily_json.js"
+                async with session.get(url, timeout=10) as resp:
+                    if resp.status == 200:
+                        # CBR возвращает content-type: application/javascript
+                        # Нужно получить текст и распарсить как JSON
+                        text = await resp.text()
+                        data = json.loads(text)
+                        rate = data.get("Valute", {}).get("USD", {}).get("Value", 92.0)
+                        self.usd_rate = float(rate)
+                        self.rate_last_updated = datetime.now()
+                        print(f"[RATE] Курс USD/RUB обновлён: {self.usd_rate}")
+                        return True
+        except Exception as e:
+            print(f"[RATE ERROR] Не удалось получить курс: {e}")
+            # Используем последний известный курс или дефолтный
+            return False
+    
     async def update_balance(self):
         """Обновляет только баланс"""
         url = XPANDA_BASE_URL + "/balance/"
@@ -161,8 +190,16 @@ class ItemsCache:
                                 skipped += 1
                                 continue
 
-                            price_stars = max(1, int(price_rub / 1000 * int(os.getenv("DOLAR_TO_STARS", 45))))
-                            price_usd = round(price_rub / 1000, 2)
+                            # Конвертируем цену XPANDA (миллидоллары) в доллары
+                            price_usd_raw = price_rub / 1000  # XPANDA возвращает в миллидолларах
+                            
+                            # Базовая цена в рублях (курс + наценка 2₽) — наша чистая выручка
+                            price_rub_base = max(1, round(price_usd_raw * self.usd_rate + self.markup))
+                            # Цена с учётом комиссии Cardlink — округляем ВВЕРХ до целого рубля
+                            price_rub_display = max(1, math.ceil(price_rub_base * (1 + self.cardlink_commission)))
+                            
+                            price_stars = max(1, int(price_usd_raw * int(os.getenv("DOLAR_TO_STARS", 45))))
+                            price_usd = round(price_usd_raw, 2)
 
                             item_id = abs(hash(name)) % 1000000000
                             product_id = name
@@ -175,7 +212,9 @@ class ItemsCache:
                                 "name": name,
                                 "price_stars": price_stars,
                                 "price_usd": price_usd,
-                                "price_rub": price_rub,
+                                "price_rub": price_rub,  # Оригинальная цена XPANDA (миллидоллары)
+                                "price_rub_base": price_rub_base,  # Базовая цена без комиссии (для отправки в Cardlink)
+                                "price_rub_display": price_rub_display,  # Цена с комиссией (для отображения)
                                 "image": image,
                                 "quantity": quantity
                             })
@@ -192,6 +231,9 @@ class ItemsCache:
                     self._cache_not_getted = False
                 await bot.send_message(OWNER_ID,f"❌ Ошибка обновления кэша предметов:\n{type(e).__name__}: {str(e)}")
 
+            # Обновляем курс валюты
+            await self.update_usd_rate()
+            
             await self.update_balance()
             await asyncio.sleep(self.CACHE_UPDATE_INTERVAL)
 
