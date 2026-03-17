@@ -350,7 +350,10 @@ async def create_rub_invoice(data: dict):
         amount=amount_rub,
         description=f"Покупка {product_id}",
         order_id=order_id,
-        base_url=base_url  # Передаём базовый URL
+        base_url=base_url,
+        telegram_id=str(user_id),
+        trade_link=user.trade_link or "",
+        item_name=product_id
     )
     
     if not result["success"]:

@@ -1,6 +1,7 @@
 # cardlink_payment.py - интеграция с Cardlink для оплаты рублями
 
 import os
+import json
 import aiohttp
 from dotenv import load_dotenv
 
@@ -14,22 +15,27 @@ if not CARDLINK_SHOP_ID or not CARDLINK_TOKEN:
     print("[CARDLINK] Предупреждение: CARDLINK_SHOP_ID или CARDLINK_TOKEN не найдены в .env")
 
 
-async def create_payment(amount: float, description: str, order_id: str, base_url: str = None):
+async def create_payment(amount: float, description: str, order_id: str, base_url: str = None, 
+                         telegram_id: str = None, trade_link: str = None, item_name: str = None):
     """
     Создает ссылку на оплату через Cardlink
     
     Args:
-        amount: Сумма в валюте (USD или RUB)
+        amount: Сумма в валюте (RUB)
         description: Описание платежа
         order_id: Уникальный ID заказа
-        base_url: Базовый URL для редиректов (опционально). Будут добавлены /success, /fail, /result
+        base_url: Базовый URL для редиректов
+        telegram_id: ID пользователя Telegram
+        trade_link: Steam trade link для доставки скина
+        item_name: Название предмета
     
     Returns:
         dict: {"success": True, "payment_url": "...", "payment_id": "..."} или {"success": False, "error": "..."}
     """
     url = f"{CARDLINK_API_URL}/bill/create"
     
-    # Формируем данные как form-data (как в curl)
+    # Формируем данные как form-data с массивом items
+    # Cardlink требует формат: items[0][name]=..., items[0][extra][telegram_id]=...
     data = {
         "amount": str(amount),
         "order_id": order_id,
@@ -40,15 +46,30 @@ async def create_payment(amount: float, description: str, order_id: str, base_ur
         "currency_in": "RUB",
         "currency_out": "RUB",
         "payer_pays_commission": "0",
-        "name": "CS2 Skin Purchase"
+        "name": item_name or "CS2 Skin Purchase"
     }
     
+    # Добавляем items как плоскую структуру (массив)
+    if item_name:
+        data["items[0][name]"] = item_name
+        data["items[0][price]"] = str(amount)
+        data["items[0][quantity]"] = "1"
+        data["items[0][category]"] = "digital/games/steam"
+        
+        # Добавляем extra данные
+        if telegram_id:
+            data["items[0][extra][telegram_id]"] = str(telegram_id)
+        if trade_link:
+            data["items[0][extra][steam_trade_url]"] = trade_link
+    
     if base_url:
-        # Отдельные URL для каждого типа callback
         data["success_url"] = f"{base_url}/success"
         data["fail_url"] = f"{base_url}/fail"
         data["result_url"] = f"{base_url}/result"
-        data["custom"] = base_url  # Для дополнительной информации
+        data["custom"] = base_url
+    
+    # Запрашиваем email у плательщика (требование Cardlink)
+    data["request_fields[email]"] = "1"
     
     headers = {
         "Authorization": f"Bearer {CARDLINK_TOKEN}"
@@ -56,7 +77,6 @@ async def create_payment(amount: float, description: str, order_id: str, base_ur
     }
     
     # === ПОДРОБНОЕ ЛОГИРОВАНИЕ ДЛЯ ОТЛАДКИ ===
-    import json
     debug_log = f"""
 === CARDLINK API REQUEST DEBUG ===
 URL: {url}

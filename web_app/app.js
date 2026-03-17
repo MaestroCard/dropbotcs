@@ -620,10 +620,15 @@ async function buyItemRub(itemId, itemName, productId, priceRubDisplay) {
         if (!response.ok) {
             let errMessage = 'Не удалось создать платёж';
             try {
-                const errData = await response.json();
-                errMessage = errData.detail || errMessage;
+                const errText = await response.text();
+                try {
+                    const errData = JSON.parse(errText);
+                    errMessage = errData.detail || errText || errMessage;
+                } catch {
+                    errMessage = errText || errMessage;
+                }
             } catch {
-                errMessage = await response.text() || errMessage;
+                // Не удалось прочитать тело ответа
             }
             throw new Error(errMessage);
         }
