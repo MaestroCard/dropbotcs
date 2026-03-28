@@ -98,12 +98,12 @@ async def start_handler(message: types.Message):
                 if inviter.referrals >= REFERRALS_FOR_GIFT:
                     print("[REFERRAL] Отправляем уведомление о подарке инвайтеру")
                     markup = InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text="Забрать кейс 🎁", callback_data="claim_gift")
+                        InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
                 ]])
                 await message.bot.send_message(
                     ref_id,
                     f"🎉 Поздравляем! Один из ваших рефералов присоединился — у вас теперь {inviter.referrals} рефералов!\n"
-                    f"Нажмите кнопку ниже, чтобы получить кейс со случайным скином.",
+                    f"Нажмите кнопку ниже, чтобы получить подарок — случайный скин CS2.",
                     reply_markup=markup
                 )
                 print("[REFERRAL] Уведомление отправлено")
@@ -126,7 +126,7 @@ async def claim_gift_callback(callback: types.CallbackQuery):
                 return
 
             if user.has_gift:
-                await callback.answer("У вас уже есть один неоткрытый подарок. Сначала откройте кейс!", show_alert=True)
+                await callback.answer("У вас уже есть один неполученный подарок. Сначала заберите его!", show_alert=True)
                 return
 
             if user.referrals < REFERRALS_FOR_GIFT:
@@ -142,11 +142,11 @@ async def claim_gift_callback(callback: types.CallbackQuery):
             session.add(user)
 
     # Редактируем сообщение: меняем на web_app кнопку
-    new_text = "Кейс активирован! Нажмите ниже, чтобы открыть и увидеть подарок!"
+    new_text = "Подарок активирован! Нажмите ниже, чтобы получить его!"
     new_markup = gift_animation_keyboard()  # Из keyboards.py
 
     await callback.message.edit_text(new_text, reply_markup=new_markup)
-    await callback.answer("Кейс активирован!")
+    await callback.answer("Подарок активирован!")
 
 async def bind_steam(message: types.Message):
     parts = message.text.split()
@@ -232,11 +232,13 @@ async def successful_payment_handler(message: types.Message):
                         f"ID сделки: {result.get('id', 'неизвестно')}\n"
                         f"Проверьте Steam: {user.trade_link}"
                     )
+                    # Конвертируем цену из миллидолларов в доллары
+                    price_usd = actual_price_rub / 1000
                     await bot.send_message(OWNER_ID,
-                        f"💰 УСПЕШНАЯ ПРОДАЖА\n"
+                        f"💰 УСПЕШНАЯ ПРОДАЖА (Stars)\n"
                         f"User ID: {user_id}\n"
                         f"Предмет: {product_id}\n"
-                        f"Сумма: {actual_price_rub}\n"
+                        f"Сумма: ${price_usd:.2f}\n"
                         f"ID сделки: {result.get('id', 'неизвестно')}\n"
                         f"Trade link: {user.trade_link}"
                     )
@@ -256,7 +258,7 @@ async def broadcast_command(message: types.Message):
     # Текст после команды /broadcast 
     text = message.text[len("/broadcast"):].strip()
     if not text:
-        await message.answer("⚠️ Укажите текст рассылки после команды.\nПример: /broadcast Акция! Теперь за каждого реферала — кейс со случайным скином 🎁")
+        await message.answer("⚠️ Укажите текст рассылки после команды.\nПример: /broadcast Акция! Теперь за каждого реферала — подарок со случайным скином 🎁")
         return
 
     await message.answer(f"🚀 Начинаю рассылку:\n\n{text}\n\nПользователей в базе: подождите, считаю...")
@@ -351,7 +353,7 @@ async def stats_command(message: types.Message):
         await message.answer(f"❌ Ошибка получения статистики: {str(e)}")
 
 async def promo_gift_command(message: types.Message):
-    """Массовая рассылка с кнопкой активации кейса (только для владельца)"""
+    """Массовая рассылка с кнопкой активации подарка (только для владельца)"""
     if message.chat.id != OWNER_ID:
         await message.answer("❌ У вас нет прав на эту команду.")
         return
@@ -359,7 +361,7 @@ async def promo_gift_command(message: types.Message):
     # Получаем текст после команды
     text = message.text[len("/promo_gift"):].strip()
     if not text:
-        text = "🎁 Специальное предложение! У вас есть подарочный кейс со случайным скином CS2!"
+        text = "🎁 Специальное предложение! У вас есть подарок — случайный скин CS2!"
     
     await message.answer(f"🚀 Начинаю рассылку...\n\nТекст:\n{text}")
     
@@ -370,7 +372,7 @@ async def promo_gift_command(message: types.Message):
     
     # Кнопка для активации подарка (не webapp!)
     markup = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Получить кейс 🎁", callback_data="promo_claim")
+        InlineKeyboardButton(text="Получить подарок 🎁", callback_data="promo_claim")
     ]])
     
     for i, user in enumerate(users, 1):
@@ -396,7 +398,7 @@ async def promo_gift_command(message: types.Message):
 
 
 async def promo_claim_callback(callback: types.CallbackQuery):
-    """Обработчик нажатия на кнопку 'Получить кейс' из promo рассылки"""
+    """Обработчик нажатия на кнопку 'Получить подарок' из promo рассылки"""
     user_id = callback.from_user.id
     async with async_session() as session:
         async with session.begin():
@@ -406,7 +408,7 @@ async def promo_claim_callback(callback: types.CallbackQuery):
                 return
 
             if user.has_gift:
-                await callback.answer("У вас уже есть неоткрытый кейс. Сначала откройте его!", show_alert=True)
+                await callback.answer("У вас уже есть неполученный подарок. Сначала заберите его!", show_alert=True)
                 return
 
             if not user.trade_link:
@@ -417,12 +419,12 @@ async def promo_claim_callback(callback: types.CallbackQuery):
             user.has_gift = True
             session.add(user)
 
-    # Меняем на кнопку WebApp для открытия кейса
-    new_text = "🎉 Кейс активирован! Нажмите ниже, чтобы открыть и увидеть подарок!"
+    # Меняем на кнопку WebApp для получения подарка
+    new_text = "🎉 Подарок активирован! Нажмите ниже, чтобы получить его!"
     new_markup = gift_animation_keyboard()
 
     await callback.message.edit_text(new_text, reply_markup=new_markup)
-    await callback.answer("Кейс активирован!")
+    await callback.answer("Подарок активирован!")
 
 def register_handlers(dp: Dispatcher):
     dp.message.register(start_handler, Command(commands=['start']))

@@ -23,10 +23,10 @@ def get_webapp_url() -> str:
 def gift_animation_keyboard():
     builder = InlineKeyboardBuilder()
     
-    webapp_url = get_webapp_url() + "?mode=claim_gift"  # Добавляем параметр
+    webapp_url = get_webapp_url() + "?mode=claim_gift"
     
     builder.add(InlineKeyboardButton(
-        text="Открыть кейс и получить подарок 🎁",
+        text="Получить подарок 🎁",
         web_app=WebAppInfo(url=webapp_url)
     ))
     

@@ -395,7 +395,7 @@ async def check_payment(payment_id: str):
 
 @app.get("/api/gift_items")
 async def get_gift_items():
-    """Возвращает топ-20 дешёвых предметов для анимации открытия кейса"""
+    """Возвращает топ-20 дешёвых предметов для подарков"""
     if not cache.all_items:
         return {"items": []}
     
@@ -429,7 +429,7 @@ async def claim_gift(user_id: int):
                 raise HTTPException(status_code=404, detail="Пользователь не найден")
 
             if not user.has_gift:
-                raise HTTPException(status_code=400, detail="У вас нет доступных кейсов с подарками. Пригласите друзей по реферальной ссылке, чтобы получить подарок!")
+                raise HTTPException(status_code=400, detail="У вас нет доступных подарков. Пригласите друзей по реферальной ссылке, чтобы получить скин!")
 
             if not user.trade_link:
                 user.has_gift = False
