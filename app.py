@@ -686,6 +686,9 @@ async def claim_gift(user_id: int):
             if not user:
                 raise HTTPException(status_code=404, detail="Пользователь не найден")
 
+            if user.is_frozen:
+                raise HTTPException(status_code=400, detail="Ваш аккаунт заморожен. Получение подарков недоступно до окончания проверки.")
+
             if not user.has_gift:
                 raise HTTPException(status_code=400, detail="У вас нет доступных подарков. Пригласите друзей по реферальной ссылке, чтобы получить скин!")
 

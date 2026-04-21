@@ -150,6 +150,10 @@ async def claim_gift_callback(callback: types.CallbackQuery):
                 await callback.answer("Пользователь не найден", show_alert=True)
                 return
 
+            if user.is_frozen:
+                await callback.answer("Ваш аккаунт заморожен. Получение подарков недоступно до окончания проверки.", show_alert=True)
+                return
+
             if user.has_gift:
                 await callback.answer("У вас уже есть один неполученный подарок. Сначала заберите его!", show_alert=True)
                 return
