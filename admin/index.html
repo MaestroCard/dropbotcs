@@ -34,6 +34,19 @@
 
   <main>
 
+    <!-- ── 0: Global gift toggle ──────────────────────────────── -->
+    <div class="card" id="gift-toggle-card">
+      <div class="flex-row" style="justify-content:space-between;align-items:center">
+        <div>
+          <div class="card-title" style="margin-bottom:4px">🎁 Выдача подарков</div>
+          <div id="gift-status-text" class="text-muted" style="font-size:.85rem">Загрузка...</div>
+        </div>
+        <button id="gift-toggle-btn" class="btn btn-sm" onclick="toggleGifts()" style="min-width:140px">
+          <span class="loader"></span>
+        </button>
+      </div>
+    </div>
+
     <!-- ── A: Review queue ──────────────────────────────────────── -->
     <div class="card" id="review-section">
       <div class="card-title">⚠️ Очередь на проверку</div>

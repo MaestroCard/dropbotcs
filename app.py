@@ -28,6 +28,7 @@ from database import (
 from cache import cache
 from bot import dp  # dp из bot.py
 from config import OWNER_ID, ADMIN_TOKEN
+from bot_settings import bot_settings
 from cardlink_payment import create_payment, check_payment_status
 
 load_dotenv()
@@ -294,6 +295,23 @@ async def admin_approve(telegram_id: int):
         "restored":         restored,
         "gifts_sent":       gifts_sent,
     }
+
+
+@app.get("/api/admin/settings", dependencies=[Depends(require_admin)])
+async def admin_get_settings():
+    return {"gifts_enabled": bot_settings.gifts_enabled}
+
+
+@app.post("/api/admin/settings/gifts_toggle", dependencies=[Depends(require_admin)])
+async def admin_toggle_gifts():
+    bot_settings.gifts_enabled = not bot_settings.gifts_enabled
+    state = "включена" if bot_settings.gifts_enabled else "отключена"
+    print(f"[ADMIN] Выдача подарков {state}")
+    try:
+        await bot.send_message(OWNER_ID, f"🎁 Выдача подарков {state} через админ-панель.")
+    except Exception:
+        pass
+    return {"gifts_enabled": bot_settings.gifts_enabled}
 
 
 @app.post("/api/admin/dismiss/{telegram_id}", dependencies=[Depends(require_admin)])
@@ -685,6 +703,9 @@ async def claim_gift(user_id: int):
             user = await get_user(user_id, session)
             if not user:
                 raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+            if not bot_settings.gifts_enabled:
+                raise HTTPException(status_code=400, detail="Выдача подарков временно приостановлена. Попробуйте позже.")
 
             if user.is_frozen:
                 raise HTTPException(status_code=400, detail="Ваш аккаунт заморожен. Получение подарков недоступно до окончания проверки.")

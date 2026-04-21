@@ -94,9 +94,51 @@ let state = {
 
 // ── Init ──────────────────────────────────────────────────────────────
 function initApp() {
+  loadGiftStatus();
   loadReviewQueue();
   loadUsers();
   loadChart(30);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  0 — Gift global toggle
+// ══════════════════════════════════════════════════════════════════════
+async function loadGiftStatus() {
+  const data = await apiFetch('/settings').catch(() => null);
+  if (!data) return;
+  renderGiftToggle(data.gifts_enabled);
+}
+
+function renderGiftToggle(enabled) {
+  const btn  = document.getElementById('gift-toggle-btn');
+  const text = document.getElementById('gift-status-text');
+  const card = document.getElementById('gift-toggle-card');
+
+  if (enabled) {
+    btn.textContent  = '⏸ Остановить выдачу';
+    btn.className    = 'btn btn-danger btn-sm';
+    text.textContent = '✅ Выдача подарков включена — пользователи могут получать скины';
+    card.style.borderColor = '';
+  } else {
+    btn.textContent  = '▶ Запустить выдачу';
+    btn.className    = 'btn btn-success btn-sm';
+    text.textContent = '⛔ Выдача подарков остановлена — кнопка заблокирована для всех';
+    card.style.borderColor = 'var(--red)';
+  }
+}
+
+async function toggleGifts() {
+  const btn = document.getElementById('gift-toggle-btn');
+  btn.disabled = true;
+  const data = await apiFetch('/settings/gifts_toggle', { method: 'POST' }).catch(e => {
+    showToast('Ошибка: ' + e.message, 'error');
+    return null;
+  });
+  btn.disabled = false;
+  if (!data) return;
+  renderGiftToggle(data.gifts_enabled);
+  showToast(data.gifts_enabled ? '✅ Выдача подарков включена' : '⛔ Выдача подарков остановлена',
+            data.gifts_enabled ? 'success' : 'error');
 }
 
 // ══════════════════════════════════════════════════════════════════════

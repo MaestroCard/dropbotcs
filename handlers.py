@@ -17,6 +17,7 @@ from database import (
     get_user, get_all_users, freeze_user, get_users_for_review,
     admin_add_referral, approve_user,
 )
+from bot_settings import bot_settings
 from sqlalchemy import select, func
 from keyboards import main_menu
 from cache import cache
@@ -150,6 +151,10 @@ async def claim_gift_callback(callback: types.CallbackQuery):
                 await callback.answer("Пользователь не найден", show_alert=True)
                 return
 
+            if not bot_settings.gifts_enabled:
+                await callback.answer("Выдача подарков временно приостановлена. Попробуйте позже.", show_alert=True)
+                return
+
             if user.is_frozen:
                 await callback.answer("Ваш аккаунт заморожен. Получение подарков недоступно до окончания проверки.", show_alert=True)
                 return
@@ -279,18 +284,42 @@ async def successful_payment_handler(message: types.Message):
             await bot.send_message(OWNER_ID,f"❌ Ошибка после оплаты\nUser: {user_id}\nПредмет: {product_id}\nОшибка: {str(e)}")
 
 async def broadcast_command(message: types.Message):
-    
     if message.chat.id != OWNER_ID:
         await message.answer("❌ У вас нет прав на эту команду.")
         return
 
-    # Текст после команды /broadcast 
-    text = message.text[len("/broadcast"):].strip()
-    if not text:
-        await message.answer("⚠️ Укажите текст рассылки после команды.\nПример: /broadcast Акция! Теперь за каждого реферала — подарок со случайным скином 🎁")
+    # ── Определяем фото и текст ───────────────────────────────────────
+    photo_file_id = None
+
+    if message.photo:
+        # Сценарий 1: фото отправлено с подписью "/broadcast текст"
+        photo_file_id = message.photo[-1].file_id
+        raw = (message.caption or "").strip()
+        text = raw[len("/broadcast"):].strip()
+    elif message.reply_to_message and message.reply_to_message.photo:
+        # Сценарий 2: reply на фото + "/broadcast текст" в тексте
+        photo_file_id = message.reply_to_message.photo[-1].file_id
+        raw = (message.text or "").strip()
+        text = raw[len("/broadcast"):].strip()
+    else:
+        # Сценарий 3: только текст
+        raw = (message.text or "").strip()
+        text = raw[len("/broadcast"):].strip()
+
+    if not text and not photo_file_id:
+        await message.answer(
+            "⚠️ Укажите текст рассылки после команды.\n\n"
+            "Варианты:\n"
+            "• <code>/broadcast Текст сообщения</code> — текст\n"
+            "• Отправить фото с подписью <code>/broadcast Текст</code> — фото + текст\n"
+            "• Ответить (reply) на фото командой <code>/broadcast Текст</code> — фото + текст",
+            parse_mode="HTML",
+        )
         return
 
-    await message.answer(f"🚀 Начинаю рассылку:\n\n{text}\n\nПользователей в базе: подождите, считаю...")
+    kind = "с фото" if photo_file_id else "текстовая"
+    preview = text[:100] + ("..." if len(text) > 100 else "")
+    await message.answer(f"🚀 Начинаю рассылку ({kind}):\n\n{preview}\n\nПодождите, считаю пользователей...")
 
     users = await get_all_users()
     total = len(users)
@@ -302,10 +331,17 @@ async def broadcast_command(message: types.Message):
     for i, user in enumerate(users, 1):
         try:
             markup = main_menu()
-            await bot.send_message(user.telegram_id, text, reply_markup=markup)
+            if photo_file_id:
+                await bot.send_photo(
+                    user.telegram_id,
+                    photo=photo_file_id,
+                    caption=text or None,
+                    reply_markup=markup,
+                )
+            else:
+                await bot.send_message(user.telegram_id, text, reply_markup=markup)
             sent += 1
         except Exception as e:
-            # Блокировка пользователя, деактивированный аккаунт и т.д.
             print(f"[BROADCAST] Ошибка отправки {user.telegram_id}: {str(e)}")
             failed += 1
 
@@ -313,7 +349,6 @@ async def broadcast_command(message: types.Message):
         if i % 30 == 0:
             await asyncio.sleep(1)
 
-        # Опционально: прогресс каждые 100 пользователей
         if i % 100 == 0:
             await message.answer(f"Обработано {i}/{total}...")
 
@@ -553,6 +588,11 @@ def register_handlers(dp: Dispatcher):
     dp.message.register(start_handler, Command(commands=['start']))
     dp.message.register(bind_steam, Command(commands=['bind']))
     dp.message.register(broadcast_command, Command(commands=['broadcast']))
+    # Фото с подписью /broadcast ... или reply на фото с командой /broadcast
+    dp.message.register(
+        broadcast_command,
+        lambda m: m.photo and m.caption and m.caption.lstrip().startswith('/broadcast')
+    )
     dp.message.register(reset_gifts_command, Command(commands=['reset_gifts']))
     dp.message.register(stats_command, Command(commands=['stats']))
     dp.message.register(promo_gift_command, Command(commands=['promo_gift']))
