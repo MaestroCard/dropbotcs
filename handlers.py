@@ -12,11 +12,15 @@ from datetime import datetime
 from aiogram import Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database import add_user, add_referral, update_steam, async_session, User, get_user, get_all_users
+from database import (
+    add_user, add_referral, update_steam, async_session, User,
+    get_user, get_all_users, freeze_user, get_users_for_review,
+    admin_add_referral, approve_user,
+)
 from sqlalchemy import select, func
 from keyboards import main_menu
 from cache import cache
-from config import OWNER_ID, REFERRALS_FOR_GIFT
+from config import OWNER_ID, REFERRALS_FOR_GIFT, REFERRAL_REVIEW_THRESHOLD
 from aiogram import Bot
 from keyboards import gift_animation_keyboard
 
@@ -89,24 +93,45 @@ async def start_handler(message: types.Message):
     if ref_id and is_new_user:
         try:
             print(f"[REFERRAL] Пытаемся добавить реферал {message.from_user.id} → от {ref_id}")
-            await add_referral(ref_id, message.from_user.id)
-            print("[REFERRAL] add_referral прошёл без исключения")
+            result = await add_referral(ref_id, message.from_user.id)
+            print(f"[REFERRAL] add_referral вернул: {result}")
 
-            inviter = await get_user(ref_id)
-            if inviter:
-                print(f"[REFERRAL] У инвайтера {ref_id} referrals теперь = {inviter.referrals}")
-                if inviter.referrals >= REFERRALS_FOR_GIFT:
-                    print("[REFERRAL] Отправляем уведомление о подарке инвайтеру")
-                    markup = InlineKeyboardMarkup(inline_keyboard=[[
-                        InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
-                ]])
-                await message.bot.send_message(
-                    ref_id,
-                    f"🎉 Поздравляем! Один из ваших рефералов присоединился — у вас теперь {inviter.referrals} рефералов!\n"
-                    f"Нажмите кнопку ниже, чтобы получить подарок — случайный скин CS2.",
-                    reply_markup=markup
+            # Уведомление новому пользователю: инвайтер заморожен
+            if result and result.get("inviter_frozen"):
+                await message.answer(
+                    "⚠️ Аккаунт пригласившего вас пользователя временно заморожен.\n"
+                    "Ваш реферал сохранён и будет засчитан автоматически после проверки."
                 )
-                print("[REFERRAL] Уведомление отправлено")
+
+            # Уведомление об авто-заморозке при достижении порога
+            if result and result.get("needs_review_notification") and OWNER_ID:
+                await message.bot.send_message(
+                    OWNER_ID,
+                    f"⚠️ <b>АВТО-ЗАМОРОЗКА</b>\n\n"
+                    f"User ID: <code>{ref_id}</code>\n"
+                    f"Достиг {REFERRAL_REVIEW_THRESHOLD} рефералов — заморожен и поставлен на проверку.\n\n"
+                    f"Команды:\n"
+                    f"/unfreeze {ref_id} — разморозить\n"
+                    f"/freeze {ref_id} — оставить замороженным",
+                    parse_mode="HTML",
+                )
+
+            if result and result.get("success"):
+                inviter = await get_user(ref_id)
+                if inviter:
+                    print(f"[REFERRAL] У инвайтера {ref_id} referrals теперь = {inviter.referrals}")
+                    if inviter.referrals >= REFERRALS_FOR_GIFT:
+                        print("[REFERRAL] Отправляем уведомление о подарке инвайтеру")
+                        markup = InlineKeyboardMarkup(inline_keyboard=[[
+                            InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
+                        ]])
+                        await message.bot.send_message(
+                            ref_id,
+                            f"🎉 Поздравляем! Один из ваших рефералов присоединился — у вас теперь {inviter.referrals} рефералов!\n"
+                            f"Нажмите кнопку ниже, чтобы получить подарок — случайный скин CS2.",
+                            reply_markup=markup
+                        )
+                        print("[REFERRAL] Уведомление отправлено")
         except Exception as e:
             print(f"[REFERRAL CRASH] Ошибка при обработке реферала: {type(e).__name__}: {str(e)}")
             import traceback
@@ -426,6 +451,100 @@ async def promo_claim_callback(callback: types.CallbackQuery):
     await callback.message.edit_text(new_text, reply_markup=new_markup)
     await callback.answer("Подарок активирован!")
 
+async def freeze_command(message: types.Message):
+    """Заморозить пользователя по Telegram ID (только для владельца)."""
+    if message.chat.id != OWNER_ID:
+        await message.answer("❌ Нет прав.")
+        return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Использование: /freeze <telegram_id>")
+        return
+    target_id = int(parts[1])
+    ok = await freeze_user(target_id, freeze=True)
+    if ok:
+        await message.answer(f"✅ Пользователь <code>{target_id}</code> заморожен.", parse_mode="HTML")
+        try:
+            await bot.send_message(
+                target_id,
+                "⚠️ Ваш реферальный аккаунт временно заморожен.\n"
+                "Новые рефералы не будут засчитываться до окончания проверки.\n"
+                "Ранее приглашённые вами пользователи сохранены и будут восстановлены автоматически.",
+            )
+        except Exception:
+            pass
+    else:
+        await message.answer(f"❌ Пользователь <code>{target_id}</code> не найден.", parse_mode="HTML")
+
+
+async def unfreeze_command(message: types.Message):
+    """Разморозить пользователя по Telegram ID (только для владельца)."""
+    if message.chat.id != OWNER_ID:
+        await message.answer("❌ Нет прав.")
+        return
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Использование: /unfreeze <telegram_id>")
+        return
+    target_id = int(parts[1])
+    result = await approve_user(target_id)
+    if result["ok"]:
+        restored = result["restored"]
+        await message.answer(
+            f"✅ Пользователь <code>{target_id}</code> разморожен.\n"
+            f"Восстановлено рефералов: <b>+{restored}</b> ({result['referrals_before']} → {result['referrals_after']})",
+            parse_mode="HTML",
+        )
+        # Уведомить пользователя о разморозке
+        try:
+            await bot.send_message(
+                target_id,
+                "✅ Ваш реферальный аккаунт разморожен!\n"
+                "Все рефералы восстановлены, новые снова засчитываются.",
+            )
+        except Exception:
+            pass
+        # Отправить уведомления о подарках за восстановленных рефералов
+        if restored > 0:
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            markup = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
+            ]])
+            for i in range(restored):
+                try:
+                    await bot.send_message(
+                        target_id,
+                        f"🎉 Один из ваших рефералов был засчитан после проверки аккаунта!\n"
+                        f"У вас теперь <b>{result['referrals_before'] + i + 1}</b> рефералов.\n"
+                        f"Нажмите кнопку ниже, чтобы получить подарок — случайный скин CS2.",
+                        reply_markup=markup,
+                        parse_mode="HTML",
+                    )
+                    await asyncio.sleep(0.05)
+                except Exception as e:
+                    print(f"[UNFREEZE GIFT NOTIFY] {e}")
+    else:
+        await message.answer(f"❌ Пользователь <code>{target_id}</code> не найден.", parse_mode="HTML")
+
+
+async def review_list_command(message: types.Message):
+    """Показать список пользователей на ручной проверке (только для владельца)."""
+    if message.chat.id != OWNER_ID:
+        await message.answer("❌ Нет прав.")
+        return
+    users = await get_users_for_review()
+    if not users:
+        await message.answer("✅ Нет пользователей на проверке.")
+        return
+    lines = [f"📋 <b>На проверке: {len(users)}</b>\n"]
+    for u in users[:20]:
+        status = "🔴 заморожен" if u.is_frozen else "🟡 активен"
+        lines.append(f"• <code>{u.telegram_id}</code> — {u.referrals} реф. — {status}")
+    if len(users) > 20:
+        lines.append(f"\n...и ещё {len(users) - 20}. Смотрите полный список в веб-панели.")
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
 def register_handlers(dp: Dispatcher):
     dp.message.register(start_handler, Command(commands=['start']))
     dp.message.register(bind_steam, Command(commands=['bind']))
@@ -433,6 +552,9 @@ def register_handlers(dp: Dispatcher):
     dp.message.register(reset_gifts_command, Command(commands=['reset_gifts']))
     dp.message.register(stats_command, Command(commands=['stats']))
     dp.message.register(promo_gift_command, Command(commands=['promo_gift']))
+    dp.message.register(freeze_command, Command(commands=['freeze']))
+    dp.message.register(unfreeze_command, Command(commands=['unfreeze']))
+    dp.message.register(review_list_command, Command(commands=['review_list']))
     dp.pre_checkout_query.register(pre_checkout_query_handler)
     dp.message.register(successful_payment_handler, lambda m: m.successful_payment is not None)
     dp.callback_query.register(claim_gift_callback, lambda c: c.data == "claim_gift")

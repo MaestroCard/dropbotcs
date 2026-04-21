@@ -11,3 +11,10 @@ else:
     print("OWNER_ID не указан в .env — уведомления владельцу отключены")
     
 REFERRALS_FOR_GIFT = int(os.getenv("REFERRALS_FOR_GIFT", "3"))
+
+# Реферальная админка
+REFERRAL_REVIEW_THRESHOLD = int(os.getenv("REFERRAL_REVIEW_THRESHOLD", "50"))
+
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+if not ADMIN_TOKEN:
+    print("[WARNING] ADMIN_TOKEN не задан в .env — admin-эндпоинты незащищены!")

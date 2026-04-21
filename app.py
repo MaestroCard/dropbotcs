@@ -5,10 +5,11 @@ import random
 import hashlib
 import hmac
 import uuid
-from fastapi import FastAPI, HTTPException, Body, Query, Header, Request
+from fastapi import FastAPI, HTTPException, Body, Query, Header, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from aiogram import Bot
 from aiogram.methods import CreateInvoiceLink
 from aiogram.types import Update
@@ -17,11 +18,16 @@ import os
 import json
 import aiohttp
 import time  # ← добавлено для кулдауна
-from database import async_session, get_user, update_steam
+from database import (
+    async_session, get_user, update_steam, add_user,
+    freeze_user, approve_user, dismiss_review,
+    get_users_for_review, get_all_referrers_paginated,
+    get_referral_tree, get_referrals_per_day,
+    admin_add_referral, admin_increment_referrals,
+)
 from cache import cache
 from bot import dp  # dp из bot.py
-from database import add_user
-from config import OWNER_ID
+from config import OWNER_ID, ADMIN_TOKEN
 from cardlink_payment import create_payment, check_payment_status
 
 load_dotenv()
@@ -145,6 +151,258 @@ app.add_middleware(
 )
 
 app.mount("/web_app", StaticFiles(directory="web_app", html=True), name="web_app")
+app.mount("/admin", StaticFiles(directory="admin", html=True), name="admin")
+
+# ─── Admin auth dependency ─────────────────────────────────────────────────────
+_admin_bearer = HTTPBearer(auto_error=False)
+
+async def require_admin(
+    creds: HTTPAuthorizationCredentials = Depends(_admin_bearer),
+):
+    if not ADMIN_TOKEN:
+        raise HTTPException(status_code=503, detail="ADMIN_TOKEN не задан на сервере")
+    if not creds or creds.credentials != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+# ─── Admin API endpoints ───────────────────────────────────────────────────────
+
+def _user_to_dict(user) -> dict:
+    return {
+        "telegram_id":      user.telegram_id,
+        "referrals":        user.referrals,
+        "frozen_referrals": user.frozen_referrals or 0,
+        "is_frozen":        bool(user.is_frozen),
+        "needs_review":     bool(user.needs_review),
+        "joined_at":        user.joined_at.isoformat() if user.joined_at else None,
+        "has_gift":         user.has_gift,
+        "steam_profile":    user.steam_profile,
+        "trade_link":       user.trade_link,
+        "referred_by":      user.referred_by,
+    }
+
+
+@app.get("/api/admin/users", dependencies=[Depends(require_admin)])
+async def admin_get_users(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    sort_by: str = Query("referrals"),
+    sort_dir: str = Query("desc"),
+):
+    allowed_sort = {"referrals", "joined_at", "telegram_id"}
+    if sort_by not in allowed_sort:
+        sort_by = "referrals"
+    data = await get_all_referrers_paginated(page, limit, sort_by, sort_dir)
+    return {
+        "users": [_user_to_dict(u) for u in data["users"]],
+        "total": data["total"],
+        "page":  data["page"],
+        "pages": data["pages"],
+    }
+
+
+@app.get("/api/admin/review_queue", dependencies=[Depends(require_admin)])
+async def admin_review_queue():
+    users = await get_users_for_review()
+    return {
+        "users": [_user_to_dict(u) for u in users],
+        "count": len(users),
+    }
+
+
+@app.get("/api/admin/user/{telegram_id}", dependencies=[Depends(require_admin)])
+async def admin_get_user(telegram_id: int):
+    user = await get_user(telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return _user_to_dict(user)
+
+
+@app.post("/api/admin/freeze/{telegram_id}", dependencies=[Depends(require_admin)])
+async def admin_freeze(telegram_id: int, data: dict = Body(...)):
+    freeze = bool(data.get("freeze", True))
+    ok = await freeze_user(telegram_id, freeze)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # Уведомить пользователя
+    try:
+        if freeze:
+            await bot.send_message(
+                telegram_id,
+                "⚠️ Ваш реферальный аккаунт временно заморожен.\n"
+                "Новые рефералы не будут засчитываться до окончания проверки.\n"
+                "Ранее приглашённые вами пользователи сохранены и будут восстановлены автоматически.",
+            )
+        else:
+            await bot.send_message(
+                telegram_id,
+                "✅ Ваш реферальный аккаунт разморожен!\n"
+                "Все рефералы восстановлены, новые снова засчитываются.",
+            )
+    except Exception as e:
+        print(f"[FREEZE NOTIFY] Ошибка отправки уведомления {telegram_id}: {e}")
+
+    return {"ok": True, "telegram_id": telegram_id, "is_frozen": freeze}
+
+
+@app.post("/api/admin/approve/{telegram_id}", dependencies=[Depends(require_admin)])
+async def admin_approve(telegram_id: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    result = await approve_user(telegram_id)
+    if not result["ok"]:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # Уведомление о разморозке
+    try:
+        await bot.send_message(
+            telegram_id,
+            "✅ Ваш реферальный аккаунт разморожен!\n"
+            "Все рефералы восстановлены, новые снова засчитываются.",
+        )
+    except Exception as e:
+        print(f"[APPROVE UNFREEZE NOTIFY] {e}")
+
+    # Отправляем уведомление о подарке за каждого восстановленного реферала
+    restored = result["restored"]
+    gifts_sent = 0
+    if restored > 0:
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
+        ]])
+        for i in range(restored):
+            try:
+                await bot.send_message(
+                    telegram_id,
+                    f"🎉 Один из ваших рефералов был засчитан после проверки аккаунта!\n"
+                    f"У вас теперь <b>{result['referrals_before'] + i + 1}</b> рефералов.\n"
+                    f"Нажмите кнопку ниже, чтобы получить подарок — случайный скин CS2.",
+                    reply_markup=markup,
+                    parse_mode="HTML",
+                )
+                gifts_sent += 1
+                await asyncio.sleep(0.05)  # защита от flood control Telegram
+            except Exception as e:
+                print(f"[APPROVE GIFT NOTIFY {i+1}/{restored}] Ошибка: {e}")
+
+    return {
+        "ok":               True,
+        "telegram_id":      telegram_id,
+        "referrals_before": result["referrals_before"],
+        "referrals_after":  result["referrals_after"],
+        "restored":         restored,
+        "gifts_sent":       gifts_sent,
+    }
+
+
+@app.post("/api/admin/dismiss/{telegram_id}", dependencies=[Depends(require_admin)])
+async def admin_dismiss(telegram_id: int):
+    ok = await dismiss_review(telegram_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return {"ok": True, "telegram_id": telegram_id}
+
+
+@app.get("/api/admin/tree/{telegram_id}", dependencies=[Depends(require_admin)])
+async def admin_tree(telegram_id: int, depth: int = Query(3, ge=1, le=4)):
+    tree = await get_referral_tree(telegram_id, max_depth=depth)
+    return tree
+
+
+@app.get("/api/admin/stats/referrals_per_day", dependencies=[Depends(require_admin)])
+async def admin_referrals_per_day(days: int = Query(30, ge=1, le=365)):
+    data = await get_referrals_per_day(days)
+    return {"data": data, "days": days}
+
+
+@app.post("/api/admin/add_referral", dependencies=[Depends(require_admin)])
+async def admin_add_referral_endpoint(data: dict = Body(...)):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    referrer_id = data.get("referrer_id")
+    invited_id  = data.get("invited_id")
+
+    if not referrer_id or not invited_id:
+        raise HTTPException(status_code=400, detail="Нужны referrer_id и invited_id")
+
+    result = await admin_add_referral(int(referrer_id), int(invited_id))
+
+    if not result["ok"]:
+        reason_ru = {
+            "self_referral":       "Самореферал невозможен",
+            "inviter_not_found":   "Пригласивший не найден",
+            "invited_not_found":   "Приглашённый не найден",
+            "already_has_referrer": "У пользователя уже есть реферер",
+        }.get(result["reason"], result["reason"])
+        raise HTTPException(status_code=400, detail=reason_ru)
+
+    # Отправить уведомление о подарке инвайтеру
+    try:
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
+        ]])
+        await bot.send_message(
+            referrer_id,
+            f"🎉 Администратор вручную засчитал вам реферала!\n"
+            f"У вас теперь <b>{result['referrals_count']}</b> рефералов.\n"
+            f"Нажмите кнопку ниже, чтобы получить подарок — случайный скин CS2.",
+            reply_markup=markup,
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"[ADMIN ADD REFERRAL NOTIFY] Ошибка: {e}")
+
+    return {
+        "ok":             True,
+        "referrer_id":    referrer_id,
+        "invited_id":     invited_id,
+        "referrals_count": result["referrals_count"],
+    }
+
+
+@app.post("/api/admin/increment_referrals/{telegram_id}", dependencies=[Depends(require_admin)])
+async def admin_increment_endpoint(telegram_id: int, data: dict = Body(...)):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    count = int(data.get("count", 1))
+    result = await admin_increment_referrals(telegram_id, count)
+
+    if not result["ok"]:
+        reason_ru = {
+            "inviter_not_found": "Пользователь не найден",
+            "invalid_count":     "Некорректное количество (1–10000)",
+        }.get(result["reason"], result["reason"])
+        raise HTTPException(status_code=400, detail=reason_ru)
+
+    # Отправить уведомление о подарке за каждый добавленный реферал
+    markup = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
+    ]])
+    gifts_sent = 0
+    start_count = result["referrals_count"] - count
+    for i in range(count):
+        try:
+            await bot.send_message(
+                telegram_id,
+                f"🎉 Администратор вручную засчитал вам реферала!\n"
+                f"У вас теперь <b>{start_count + i + 1}</b> рефералов.\n"
+                f"Нажмите кнопку ниже, чтобы получить подарок — случайный скин CS2.",
+                reply_markup=markup,
+                parse_mode="HTML",
+            )
+            gifts_sent += 1
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            print(f"[INCREMENT NOTIFY {i+1}/{count}] {e}")
+
+    return {
+        "ok":             True,
+        "telegram_id":    telegram_id,
+        "added":          count,
+        "referrals_count": result["referrals_count"],
+        "gifts_sent":     gifts_sent,
+    }
 
 
 @app.post("/webhook")

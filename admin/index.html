@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CS2 Referral Admin</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--  Login overlay                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div id="login-overlay">
+  <div class="login-card">
+    <h2>🔐 CS2 Admin</h2>
+    <p>Введите ADMIN_TOKEN для входа</p>
+    <input type="password" id="token-input" placeholder="Bearer token" autocomplete="off"/>
+    <div class="err" id="login-err"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Войти</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--  Main app shell                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <header>
+    <h1>⚙️ CS2 Referral Admin</h1>
+    <span id="review-badge" class="badge hidden">0 на проверке</span>
+    <button class="btn btn-ghost btn-sm" onclick="logout()">Выйти</button>
+  </header>
+
+  <main>
+
+    <!-- ── A: Review queue ──────────────────────────────────────── -->
+    <div class="card" id="review-section">
+      <div class="card-title">⚠️ Очередь на проверку</div>
+      <div id="review-list">
+        <span class="loader"></span>
+      </div>
+    </div>
+
+    <!-- ── B: Users table ───────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">👥 Пользователи с рефералами</div>
+      <div class="flex-row" style="margin-bottom:12px">
+        <span id="users-total" class="text-muted"></span>
+        <button class="btn btn-ghost btn-sm" onclick="loadUsers()">🔄 Обновить</button>
+      </div>
+      <div class="table-wrap">
+        <table id="users-table">
+          <thead>
+            <tr>
+              <th class="sortable" data-col="telegram_id" onclick="sortBy('telegram_id')">
+                Telegram ID <span class="sort-arrow">↕</span>
+              </th>
+              <th class="sortable active-sort" data-col="referrals" onclick="sortBy('referrals')">
+                Рефералы <span class="sort-arrow">↓</span>
+              </th>
+              <th title="Рефералы, пришедшие во время заморозки">❄️ Ждут</th>
+              <th>Статус</th>
+              <th class="sortable" data-col="joined_at" onclick="sortBy('joined_at')">
+                Дата входа <span class="sort-arrow">↕</span>
+              </th>
+              <th>Steam</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="6" style="text-align:center;padding:20px">
+              <span class="loader"></span>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+
+    <!-- ── C: Ручное добавление реферала ──────────────────────── -->
+    <div class="card">
+      <div class="card-title">➕ Добавить рефералов вручную</div>
+
+      <!-- Tabs -->
+      <div class="flex-row" style="margin-bottom:16px;gap:0">
+        <button id="tab-real" class="btn btn-primary btn-sm" style="border-radius:8px 0 0 8px"
+          onclick="switchTab('real')">Реальный пользователь</button>
+        <button id="tab-fake" class="btn btn-ghost btn-sm" style="border-radius:0 8px 8px 0"
+          onclick="switchTab('fake')">Без пользователя (+N)</button>
+      </div>
+
+      <!-- Tab: real user -->
+      <div id="tab-real-content">
+        <p class="text-muted" style="font-size:.85rem;margin-bottom:12px">
+          Связывает существующих пользователей. Обходит заморозку.
+        </p>
+        <div class="flex-row">
+          <input type="number" id="add-ref-referrer" placeholder="ID пригласившего" style="
+            background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+            color:var(--text);padding:8px 12px;font-size:.9rem;width:190px;outline:none;">
+          <input type="number" id="add-ref-invited" placeholder="ID приглашённого" style="
+            background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+            color:var(--text);padding:8px 12px;font-size:.9rem;width:190px;outline:none;">
+          <button class="btn btn-success" onclick="manualAddReferral()">✚ Добавить</button>
+        </div>
+      </div>
+
+      <!-- Tab: increment only -->
+      <div id="tab-fake-content" style="display:none">
+        <p class="text-muted" style="font-size:.85rem;margin-bottom:12px">
+          Просто увеличивает счётчик рефералов. Реальный приглашённый не нужен.<br>
+          Пользователь получит уведомление о подарке за каждый добавленный реферал.
+        </p>
+        <div class="flex-row">
+          <input type="number" id="inc-ref-id" placeholder="ID пользователя" style="
+            background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+            color:var(--text);padding:8px 12px;font-size:.9rem;width:190px;outline:none;">
+          <input type="number" id="inc-ref-count" placeholder="Кол-во" value="1" min="1" max="10000" style="
+            background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+            color:var(--text);padding:8px 12px;font-size:.9rem;width:110px;outline:none;">
+          <button class="btn btn-success" onclick="incrementReferrals()">✚ Добавить</button>
+        </div>
+      </div>
+
+      <div id="add-ref-result" class="mt-8" style="font-size:.85rem"></div>
+    </div>
+
+    <!-- ── D: Referral tree ─────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">🌐 Дерево рефералов</div>
+      <p class="text-muted" style="font-size:.85rem;margin-bottom:12px">
+        Нажмите <b>«Дерево»</b> напротив нужного пользователя или введите ID вручную.
+      </p>
+      <div class="flex-row">
+        <input type="number" id="tree-id-input" placeholder="Telegram ID" style="
+          background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+          color:var(--text);padding:8px 12px;font-size:.9rem;width:180px;outline:none;">
+        <button class="btn btn-primary" onclick="openTree(document.getElementById('tree-id-input').value)">
+          Показать дерево
+        </button>
+      </div>
+      <div id="inline-tree-msg" class="text-muted mt-8" style="font-size:.82rem"></div>
+    </div>
+
+    <!-- ── D: Chart ─────────────────────────────────────────────── -->
+    <div class="card">
+      <div class="card-title">📈 Новые рефералы по дням</div>
+      <div class="chart-controls">
+        <button class="btn btn-ghost btn-sm" onclick="loadChart(7)">7 дней</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadChart(30)">30 дней</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadChart(90)">90 дней</button>
+      </div>
+      <canvas id="chart-canvas"></canvas>
+      <p class="text-muted mt-8" style="font-size:.75rem">
+        * Отображаются только пользователи, зарегистрировавшиеся после обновления бота (поле joined_at).
+      </p>
+    </div>
+
+  </main>
+</div><!-- /#app -->
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--  Tree side panel                                                 -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div id="tree-panel">
+  <div class="tree-header">
+    <h3 id="tree-title">Дерево рефералов</h3>
+    <button class="btn btn-ghost btn-sm" onclick="closeTree()">✕ Закрыть</button>
+  </div>
+  <div class="tree-controls">
+    <label>Глубина:
+      <input type="range" id="depth-slider" min="1" max="4" value="3"
+             oninput="document.getElementById('depth-val').textContent=this.value; reloadTree()">
+      <span id="depth-val">3</span>
+    </label>
+    <button class="btn btn-ghost btn-sm" onclick="reloadTree()">🔄</button>
+    <span id="tree-status" class="text-muted" style="font-size:.78rem"></span>
+  </div>
+  <div id="tree-svg-wrap">
+    <div class="tree-tip" id="tree-tip"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--  User sidebar                                                    -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div id="sidebar">
+  <div class="flex-row" style="justify-content:space-between">
+    <h4 id="sb-title">Пользователь</h4>
+    <button class="btn btn-ghost btn-sm" onclick="closeSidebar()">✕</button>
+  </div>
+  <div id="sb-body"></div>
+  <div id="sb-actions" class="flex-row mt-16"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!--  Scripts                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
