@@ -442,7 +442,7 @@ function renderD3Tree(rootData) {
   const root = d3.hierarchy(rootData);
 
   // Determine layout: use tree layout
-  const treeLayout = d3.tree().nodeSize([40, 160]);
+  const treeLayout = d3.tree().nodeSize([48, 240]);
   treeLayout(root);
 
   // Shift so root is visible
@@ -498,16 +498,17 @@ function renderD3Tree(rootData) {
 
   // ID label below
   node.append('text')
-    .attr('dy', '24px')
+    .attr('dy', '26px')
     .attr('text-anchor', 'middle')
     .attr('fill', 'var(--muted)')
-    .attr('font-size', '9px')
-    .text(d => String(d.data.id).slice(-6));
+    .attr('font-size', '10px')
+    .attr('font-family', 'monospace')
+    .text(d => d.data.id);
 
   // Truncation indicator
   node.filter(d => d.data.truncated_count > 0)
     .append('text')
-    .attr('dy', '38px')
+    .attr('dy', '42px')
     .attr('text-anchor', 'middle')
     .attr('fill', 'var(--orange)')
     .attr('font-size', '8px')

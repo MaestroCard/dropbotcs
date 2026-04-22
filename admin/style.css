@@ -184,7 +184,7 @@ tr:hover td { background: var(--surface2); }
 #tree-panel {
   display: none;
   position: fixed; top: 0; right: 0; bottom: 0;
-  width: min(600px, 100vw);
+  width: min(1000px, 90vw);
   background: var(--surface);
   border-left: 1px solid var(--border);
   flex-direction: column;

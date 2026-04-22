@@ -490,6 +490,22 @@ async def promo_claim_callback(callback: types.CallbackQuery):
     await callback.message.edit_text(new_text, reply_markup=new_markup)
     await callback.answer("Подарок активирован!")
 
+async def gifts_off_command(message: types.Message):
+    if message.chat.id != OWNER_ID:
+        await message.answer("❌ Нет прав.")
+        return
+    bot_settings.gifts_enabled = False
+    await message.answer("⛔ Выдача подарков остановлена.")
+
+
+async def gifts_on_command(message: types.Message):
+    if message.chat.id != OWNER_ID:
+        await message.answer("❌ Нет прав.")
+        return
+    bot_settings.gifts_enabled = True
+    await message.answer("✅ Выдача подарков включена.")
+
+
 async def freeze_command(message: types.Message):
     """Заморозить пользователя по Telegram ID (только для владельца)."""
     if message.chat.id != OWNER_ID:
@@ -596,6 +612,8 @@ def register_handlers(dp: Dispatcher):
     dp.message.register(reset_gifts_command, Command(commands=['reset_gifts']))
     dp.message.register(stats_command, Command(commands=['stats']))
     dp.message.register(promo_gift_command, Command(commands=['promo_gift']))
+    dp.message.register(gifts_off_command, Command(commands=['gifts_off']))
+    dp.message.register(gifts_on_command,  Command(commands=['gifts_on']))
     dp.message.register(freeze_command, Command(commands=['freeze']))
     dp.message.register(unfreeze_command, Command(commands=['unfreeze']))
     dp.message.register(review_list_command, Command(commands=['review_list']))
