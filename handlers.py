@@ -93,7 +93,7 @@ async def start_handler(message: types.Message):
 
     if ref_id and is_new_user:
         try:
-            print(f"[REFERRAL] Пытаемся добавить реферал {message.from_user.id} → от {ref_id}")
+            print(f"[REFERRAL] Регистрируем связь {message.from_user.id} → {ref_id}")
 
             # ── Проверка качества аккаунта ─────────────────────────────
             has_username = bool(message.from_user.username)
@@ -103,11 +103,11 @@ async def start_handler(message: types.Message):
                     photos = await bot.get_user_profile_photos(message.from_user.id, limit=1)
                     has_avatar = photos.total_count > 0
                 except Exception as e:
-                    print(f"[REFERRAL] Не удалось проверить аватарку {message.from_user.id}: {e}")
+                    print(f"[REFERRAL] Не удалось проверить аватарку: {e}")
                     has_avatar = True  # при ошибке API не блокируем
 
             if not has_username and not has_avatar:
-                print(f"[REFERRAL] {message.from_user.id} — нет username и аватарки, реферал не засчитан")
+                print(f"[REFERRAL] {message.from_user.id} — нет username и аватарки, реферал отклонён")
                 await message.answer(
                     "👋 Добро пожаловать!\n\n"
                     "⚠️ К сожалению, реферал не засчитан пригласившему.\n"
@@ -116,53 +116,18 @@ async def start_handler(message: types.Message):
                     "Установите их в настройках Telegram и попросите друга прислать ссылку повторно.",
                     parse_mode="HTML",
                 )
-                result = None
             else:
+                # Фиксируем связь. Реферал будет засчитан при открытии WebApp.
                 result = await add_referral(ref_id, message.from_user.id)
-            print(f"[REFERRAL] add_referral вернул: {result}")
+                print(f"[REFERRAL] add_referral: {result}")
 
-            # Дневной лимит инвайтера исчерпан
-            if result and result.get("daily_limit"):
-                print(f"[REFERRAL] Дневной лимит инвайтера {ref_id} исчерпан")
-
-            # Уведомление новому пользователю: инвайтер заморожен
-            if result and result.get("inviter_frozen"):
-                await message.answer(
-                    "⚠️ Аккаунт пригласившего вас пользователя временно заморожен.\n"
-                    "Ваш реферал сохранён и будет засчитан автоматически после проверки."
-                )
-
-            # Уведомление об авто-заморозке при достижении порога
-            if result and result.get("needs_review_notification") and OWNER_ID:
-                await message.bot.send_message(
-                    OWNER_ID,
-                    f"⚠️ <b>АВТО-ЗАМОРОЗКА</b>\n\n"
-                    f"User ID: <code>{ref_id}</code>\n"
-                    f"Достиг {REFERRAL_REVIEW_THRESHOLD} рефералов — заморожен и поставлен на проверку.\n\n"
-                    f"Команды:\n"
-                    f"/unfreeze {ref_id} — разморозить\n"
-                    f"/freeze {ref_id} — оставить замороженным",
-                    parse_mode="HTML",
-                )
-
-            if result and result.get("success"):
-                inviter = await get_user(ref_id)
-                if inviter:
-                    print(f"[REFERRAL] У инвайтера {ref_id} referrals теперь = {inviter.referrals}")
-                    if inviter.referrals >= REFERRALS_FOR_GIFT:
-                        print("[REFERRAL] Отправляем уведомление о подарке инвайтеру")
-                        markup = InlineKeyboardMarkup(inline_keyboard=[[
-                            InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
-                        ]])
-                        await message.bot.send_message(
-                            ref_id,
-                            f"🎉 Поздравляем! Один из ваших рефералов присоединился — у вас теперь {inviter.referrals} рефералов!\n"
-                            f"Нажмите кнопку ниже, чтобы получить подарок — случайный скин CS2.",
-                            reply_markup=markup
-                        )
-                        print("[REFERRAL] Уведомление отправлено")
+                if result and result.get("inviter_frozen"):
+                    await message.answer(
+                        "⚠️ Аккаунт пригласившего вас пользователя временно заморожен.\n"
+                        "Ваш реферал сохранён и будет засчитан автоматически после проверки."
+                    )
         except Exception as e:
-            print(f"[REFERRAL CRASH] Ошибка при обработке реферала: {type(e).__name__}: {str(e)}")
+            print(f"[REFERRAL CRASH] {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
 
@@ -311,6 +276,52 @@ async def successful_payment_handler(message: types.Message):
             print(f"[ERROR PAY] {type(e).__name__}: {str(e)}")
             await bot.send_message(OWNER_ID,f"❌ Ошибка после оплаты\nUser: {user_id}\nПредмет: {product_id}\nОшибка: {str(e)}")
 
+async def _do_broadcast(owner_chat_id: int, text: str, photo_file_id: str | None):
+    """Фоновая рассылка — запускается через asyncio.create_task()."""
+    try:
+        users = await get_all_users()
+        total = len(users)
+        sent = 0
+        failed = 0
+
+        await bot.send_message(owner_chat_id, f"Найдено пользователей: {total}. Начинаю отправку...")
+
+        for i, user in enumerate(users, 1):
+            try:
+                markup = main_menu()
+                if photo_file_id:
+                    await bot.send_photo(
+                        user.telegram_id,
+                        photo=photo_file_id,
+                        caption=text or None,
+                        reply_markup=markup,
+                    )
+                else:
+                    await bot.send_message(user.telegram_id, text, reply_markup=markup)
+                sent += 1
+            except Exception as e:
+                print(f"[BROADCAST] Ошибка отправки {user.telegram_id}: {str(e)}")
+                failed += 1
+
+            # Защита от лимитов Telegram (~30 сообщений/сек)
+            if i % 30 == 0:
+                await asyncio.sleep(1)
+
+            if i % 100 == 0:
+                await bot.send_message(owner_chat_id, f"Обработано {i}/{total}...")
+
+        await bot.send_message(
+            owner_chat_id,
+            f"✅ Рассылка завершена!\nУспешно: {sent}\nОшибок: {failed}",
+        )
+    except Exception as e:
+        print(f"[BROADCAST] Критическая ошибка: {e}")
+        try:
+            await bot.send_message(owner_chat_id, f"❌ Рассылка прервана из-за ошибки: {e}")
+        except Exception:
+            pass
+
+
 async def broadcast_command(message: types.Message):
     if message.chat.id != OWNER_ID:
         await message.answer("❌ У вас нет прав на эту команду.")
@@ -347,40 +358,15 @@ async def broadcast_command(message: types.Message):
 
     kind = "с фото" if photo_file_id else "текстовая"
     preview = text[:100] + ("..." if len(text) > 100 else "")
-    await message.answer(f"🚀 Начинаю рассылку ({kind}):\n\n{preview}\n\nПодождите, считаю пользователей...")
 
-    users = await get_all_users()
-    total = len(users)
-    sent = 0
-    failed = 0
+    # Сразу отвечаем — вебхук вернёт 200 OK и Telegram не будет повторять update
+    await message.answer(
+        f"🚀 Рассылка запущена в фоне ({kind}):\n\n{preview}\n\n"
+        "Прогресс буду присылать сюда."
+    )
 
-    await message.answer(f"Найдено пользователей: {total}. Начинаю отправку...")
-
-    for i, user in enumerate(users, 1):
-        try:
-            markup = main_menu()
-            if photo_file_id:
-                await bot.send_photo(
-                    user.telegram_id,
-                    photo=photo_file_id,
-                    caption=text or None,
-                    reply_markup=markup,
-                )
-            else:
-                await bot.send_message(user.telegram_id, text, reply_markup=markup)
-            sent += 1
-        except Exception as e:
-            print(f"[BROADCAST] Ошибка отправки {user.telegram_id}: {str(e)}")
-            failed += 1
-
-        # Защита от лимитов Telegram (~30 сообщений/сек)
-        if i % 30 == 0:
-            await asyncio.sleep(1)
-
-        if i % 100 == 0:
-            await message.answer(f"Обработано {i}/{total}...")
-
-    await message.answer(f"✅ Рассылка завершена!\nУспешно: {sent}\nОшибок: {failed}")
+    # Запускаем отправку в фоне — не блокируем вебхук
+    asyncio.create_task(_do_broadcast(message.chat.id, text, photo_file_id))
 
 async def reset_gifts_command(message: types.Message):
     """Сбрасывает has_gift=False у всех пользователей (для миграции на новую механику)"""

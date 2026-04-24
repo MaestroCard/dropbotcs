@@ -48,7 +48,10 @@ class User(Base):
     is_frozen         = Column(Boolean, default=False, nullable=True)
     needs_review      = Column(Boolean, default=False, nullable=True)
     joined_at         = Column(DateTime, nullable=True)
-    frozen_referrals  = Column(Integer, default=0, nullable=True)  # рефералы, пришедшие во время заморозки
+    frozen_referrals  = Column(Integer, default=0, nullable=True)   # рефералы во время заморозки
+    webapp_opened     = Column(Boolean, default=False, nullable=True) # открыл ли WebApp хоть раз
+    registration_ip   = Column(String,  nullable=True)               # IP при первом открытии WebApp
+    referral_pending  = Column(Boolean, default=False, nullable=True) # реферал зафиксирован, но ещё не засчитан
 
 
 async def run_migrations():
@@ -58,6 +61,9 @@ async def run_migrations():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS needs_review      BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS joined_at         TIMESTAMP",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS frozen_referrals  INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS webapp_opened     BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS registration_ip   VARCHAR(45)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_pending  BOOLEAN NOT NULL DEFAULT FALSE",
     ]
     async with engine.begin() as conn:
         for sql in migrations:
@@ -106,28 +112,15 @@ async def add_user(telegram_id: int) -> User:
 
 async def add_referral(referrer_telegram_id: int, invited_telegram_id: int) -> dict:
     """
-    Регистрирует реферальную связь.
-    Возвращает dict:
-      success                   — реферал засчитан (счётчик вырос)
-      needs_review_notification — достигнут порог, надо уведомить владельца
-      referrals_count           — текущее кол-во рефералов у пригласившего
+    Фиксирует реферальную связь. Счётчик НЕ инкрементируется сразу —
+    реферал засчитывается только после того, как приглашённый откроет WebApp
+    (см. mark_webapp_opened). Это защита от ботов и купленных аккаунтов.
 
-    Ключевое: referred_by ВСЕГДА сохраняется (даже при заморозке),
-    чтобы approve_user() мог восстановить счётчик через COUNT(referred_by).
-    Ранние return внутри транзакции намеренно убраны — они не гарантируют
-    коммит в SQLAlchemy async.
+    Возвращает: success, inviter_frozen
     """
     if referrer_telegram_id == invited_telegram_id:
         print(f"[WARNING] Самореферал {invited_telegram_id} — игнорируем")
-        return {"success": False, "needs_review_notification": False, "referrals_count": 0}
-
-    from config import REFERRAL_REVIEW_THRESHOLD, DAILY_REFERRAL_LIMIT
-
-    # Результаты, которые заполняются внутри транзакции
-    result_success   = False
-    result_notify    = False
-    result_count     = 0
-    early_exit_reason = None   # причина, по которой счётчик не трогаем
+        return {"success": False, "inviter_frozen": False}
 
     async with async_session() as session:
         async with session.begin():
@@ -140,82 +133,142 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int) -> d
             )).scalar_one_or_none()
 
             if not inviter or not invited:
-                early_exit_reason = "not_found"
-            elif invited.referred_by is not None:
-                early_exit_reason = "already_referred"
-                if invited.referred_by == referrer_telegram_id:
-                    print(f"[INFO] Повтор: {invited_telegram_id} уже реферал {referrer_telegram_id}")
-                else:
-                    print(f"[WARNING] Конфликт: {invited_telegram_id} уже имеет referrer {invited.referred_by}")
-            else:
-                # Проверяем дневной лимит (только для незамороженных — заморозка
-                # всё равно не инкрементит основной счётчик, лимит не нужен)
-                if not inviter.is_frozen:
-                    today_start = datetime.datetime.utcnow().replace(
-                        hour=0, minute=0, second=0, microsecond=0
-                    )
-                    today_count = await session.scalar(
-                        select(func.count(User.id))
-                        .where(User.referred_by == referrer_telegram_id)
-                        .where(User.joined_at >= today_start)
-                    )
-                    if (today_count or 0) >= DAILY_REFERRAL_LIMIT:
-                        early_exit_reason = "daily_limit"
-                        print(f"[DAILY LIMIT] {referrer_telegram_id} — лимит {DAILY_REFERRAL_LIMIT}/сут достигнут")
+                return {"success": False, "inviter_frozen": False}
 
-                if early_exit_reason is None:
-                    # Фиксируем связь для аудита
-                    invited.referred_by = referrer_telegram_id
-                    session.add(invited)
+            if invited.referred_by is not None:
+                print(f"[INFO] {invited_telegram_id} уже имеет реферера {invited.referred_by}")
+                return {"success": False, "inviter_frozen": False}
 
-                    if inviter.is_frozen:
-                        # Счётчик рефералов не трогаем, но фиксируем в frozen_referrals.
-                        inviter.frozen_referrals = (inviter.frozen_referrals or 0) + 1
-                        session.add(inviter)
-                        early_exit_reason = "frozen"
-                        result_count = inviter.referrals
-                        print(f"[REFERRAL] {referrer_telegram_id} заморожен — "
-                              f"frozen_referrals={inviter.frozen_referrals}")
-                    else:
-                        inviter.referrals += 1
+            # Фиксируем связь. Счётчик будет обновлён в mark_webapp_opened.
+            invited.referred_by     = referrer_telegram_id
+            invited.referral_pending = True
+            session.add(invited)
 
-                        # Авто-заморозка на каждом кратном пороге (50, 100, 150 ...)
-                        if (inviter.referrals % REFERRAL_REVIEW_THRESHOLD == 0
-                                and not inviter.needs_review):
-                            inviter.is_frozen    = True
-                            inviter.needs_review = True
-                            result_notify        = True
-                            print(f"[AUTO-FREEZE] {referrer_telegram_id} — {inviter.referrals} рефералов")
+            print(f"[REFERRAL PENDING] {invited_telegram_id} → {referrer_telegram_id} (ждём открытия WebApp)")
 
-                        session.add(inviter)
-                        result_success = True
-                        result_count   = inviter.referrals
-                        print(f"[SUCCESS] {invited_telegram_id} → {referrer_telegram_id} (итого: {result_count})")
+    return {"success": True, "inviter_frozen": bool(inviter.is_frozen)}
 
-        # Транзакция закрыта нормально — committed
 
-    if early_exit_reason == "not_found":
-        return {"success": False, "needs_review_notification": False,
-                "referrals_count": 0, "inviter_frozen": False, "daily_limit": False}
-    if early_exit_reason == "already_referred":
-        return {"success": False, "needs_review_notification": False,
-                "referrals_count": inviter.referrals if inviter else 0,
-                "inviter_frozen": False, "daily_limit": False}
-    if early_exit_reason == "daily_limit":
-        return {"success": False, "needs_review_notification": False,
-                "referrals_count": inviter.referrals if inviter else 0,
-                "inviter_frozen": False, "daily_limit": True}
-    if early_exit_reason == "frozen":
-        return {"success": False, "needs_review_notification": False,
-                "referrals_count": result_count, "inviter_frozen": True, "daily_limit": False}
+async def mark_webapp_opened(telegram_id: int, ip_address: str) -> dict:
+    """
+    Вызывается при первом открытии WebApp пользователем.
+    Если у пользователя есть отложенный реферал (referral_pending=True) —
+    засчитывает его с полными проверками (IP-лимит, дневной лимит, заморозка).
 
-    return {
-        "success":                   result_success,
-        "needs_review_notification": result_notify,
-        "referrals_count":           result_count,
+    Возвращает dict:
+      already_opened            — WebApp уже был открыт ранее
+      counted                   — реферал засчитан
+      inviter_frozen            — инвайтер заморожен (добавлено в frozen_referrals)
+      needs_review_notification — достигнут порог авто-заморозки
+      referrals_count           — текущее кол-во рефералов инвайтера
+      inviter_id                — telegram_id инвайтера (для уведомлений)
+      blocked_reason            — причина, если not counted: ip_limit / daily_limit / no_referral
+    """
+    from config import REFERRAL_REVIEW_THRESHOLD, DAILY_REFERRAL_LIMIT, IP_DAILY_LIMIT
+
+    result = {
+        "already_opened":            False,
+        "counted":                   False,
         "inviter_frozen":            False,
-        "daily_limit":               False,
+        "needs_review_notification": False,
+        "referrals_count":           0,
+        "inviter_id":                None,
+        "blocked_reason":            None,
     }
+
+    async with async_session() as session:
+        async with session.begin():
+            user = (await session.execute(
+                select(User).where(User.telegram_id == telegram_id)
+            )).scalar_one_or_none()
+
+            if not user:
+                return result
+
+            if user.webapp_opened:
+                result["already_opened"] = True
+                return result
+
+            # Фиксируем открытие и IP
+            user.webapp_opened   = True
+            user.registration_ip = ip_address
+            session.add(user)
+
+            if not user.referral_pending or not user.referred_by:
+                result["blocked_reason"] = "no_referral"
+                return result
+
+            # ── IP-лимит ────────────────────────────────────────────────
+            today_start = datetime.datetime.utcnow().replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            ip_count = await session.scalar(
+                select(func.count(User.id))
+                .where(User.registration_ip == ip_address)
+                .where(User.webapp_opened   == True)
+                .where(User.joined_at       >= today_start)
+                .where(User.telegram_id     != telegram_id)
+            )
+            if (ip_count or 0) >= IP_DAILY_LIMIT:
+                user.referral_pending = False
+                session.add(user)
+                result["blocked_reason"] = "ip_limit"
+                print(f"[IP LIMIT] {telegram_id} с IP {ip_address} — лимит {IP_DAILY_LIMIT} достигнут")
+                return result
+
+            # ── Дневной лимит инвайтера ──────────────────────────────────
+            inviter = (await session.execute(
+                select(User).where(User.telegram_id == user.referred_by)
+            )).scalar_one_or_none()
+
+            if not inviter:
+                user.referral_pending = False
+                session.add(user)
+                return result
+
+            today_count = await session.scalar(
+                select(func.count(User.id))
+                .where(User.referred_by  == inviter.telegram_id)
+                .where(User.webapp_opened == True)
+                .where(User.joined_at    >= today_start)
+            )
+            if (today_count or 0) >= DAILY_REFERRAL_LIMIT:
+                user.referral_pending = False
+                session.add(user)
+                result["blocked_reason"] = "daily_limit"
+                print(f"[DAILY LIMIT] инвайтер {inviter.telegram_id} — лимит {DAILY_REFERRAL_LIMIT}/сут")
+                return result
+
+            # ── Засчитываем реферал ──────────────────────────────────────
+            user.referral_pending = False
+            session.add(user)
+
+            result["inviter_id"] = inviter.telegram_id
+
+            if inviter.is_frozen:
+                inviter.frozen_referrals = (inviter.frozen_referrals or 0) + 1
+                session.add(inviter)
+                result["inviter_frozen"]  = True
+                result["referrals_count"] = inviter.referrals
+                print(f"[REFERRAL FROZEN] {telegram_id} → {inviter.telegram_id} "
+                      f"(frozen_referrals={inviter.frozen_referrals})")
+            else:
+                inviter.referrals += 1
+
+                if (inviter.referrals % REFERRAL_REVIEW_THRESHOLD == 0
+                        and not inviter.needs_review):
+                    inviter.is_frozen    = True
+                    inviter.needs_review = True
+                    result["needs_review_notification"] = True
+                    print(f"[AUTO-FREEZE] {inviter.telegram_id} — {inviter.referrals} рефералов")
+
+                session.add(inviter)
+                result["counted"]         = True
+                result["referrals_count"] = inviter.referrals
+                print(f"[REFERRAL OK] {telegram_id} → {inviter.telegram_id} "
+                      f"(итого: {inviter.referrals})")
+
+    return result
 
 
 async def update_steam(telegram_id: int, profile: str, trade_link: str):

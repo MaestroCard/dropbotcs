@@ -15,6 +15,7 @@ REFERRALS_FOR_GIFT = int(os.getenv("REFERRALS_FOR_GIFT", "3"))
 # Реферальная админка
 REFERRAL_REVIEW_THRESHOLD = int(os.getenv("REFERRAL_REVIEW_THRESHOLD", "50"))
 DAILY_REFERRAL_LIMIT      = int(os.getenv("DAILY_REFERRAL_LIMIT", "15"))
+IP_DAILY_LIMIT            = int(os.getenv("IP_DAILY_LIMIT", "3"))   # макс. новых рефералов с одного IP в сутки
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 if not ADMIN_TOKEN:

@@ -13,6 +13,15 @@ fetch(location.href, {
 
 const userId = webApp.initDataUnsafe.user?.id || 'unknown';
 
+// Пинг при открытии WebApp — засчитывает отложенный реферал и логирует IP
+if (userId && userId !== 'unknown') {
+    fetch(`${window.location.origin}/api/webapp_ping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId }),
+    }).catch(() => {});  // fire-and-forget, ошибки не критичны
+}
+
 // Динамический backendUrl на основе текущего домена (работает на Railway, ngrok, localhost)
 const backendUrl = window.location.origin; // Например: https://your-project.up.railway.app
 

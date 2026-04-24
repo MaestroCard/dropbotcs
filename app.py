@@ -24,7 +24,7 @@ from database import (
     get_users_for_review, get_all_referrers_paginated,
     get_referral_tree, get_referrals_per_day,
     admin_add_referral, admin_increment_referrals,
-    freeze_subtree,
+    freeze_subtree, mark_webapp_opened,
 )
 from cache import cache
 from bot import dp  # dp из bot.py
@@ -470,6 +470,70 @@ async def telegram_webhook(
 
     await dp.feed_update(bot, update)
     return {"ok": True}
+
+
+@app.post("/api/webapp_ping")
+async def webapp_ping(request: Request, data: dict = Body(...)):
+    """
+    Вызывается при каждом открытии WebApp.
+    При первом открытии засчитывает отложенный реферал (если есть).
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from config import REFERRALS_FOR_GIFT, REFERRAL_REVIEW_THRESHOLD
+
+    telegram_id = data.get("user_id")
+    if not telegram_id:
+        return {"ok": False}
+
+    # Определяем IP: Railway проксирует через X-Forwarded-For
+    ip = (request.headers.get("X-Forwarded-For") or
+          request.headers.get("X-Real-IP") or
+          request.client.host or "unknown")
+    ip = ip.split(",")[0].strip()  # берём первый IP если список
+
+    result = await mark_webapp_opened(int(telegram_id), ip)
+
+    # Если реферал засчитан — отправляем уведомление инвайтеру
+    if result.get("counted") and result.get("inviter_id"):
+        inviter_id      = result["inviter_id"]
+        referrals_count = result["referrals_count"]
+        try:
+            markup = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Забрать подарок 🎁", callback_data="claim_gift")
+            ]])
+            await bot.send_message(
+                inviter_id,
+                f"🎉 Один из ваших рефералов только что зашёл в приложение!\n"
+                f"У вас теперь <b>{referrals_count}</b> рефералов.\n"
+                f"Нажмите кнопку ниже, чтобы получить подарок — случайный скин CS2.",
+                reply_markup=markup,
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            print(f"[WEBAPP PING] Ошибка уведомления инвайтера {inviter_id}: {e}")
+
+    # Если сработала авто-заморозка — уведомляем владельца
+    if result.get("needs_review_notification") and OWNER_ID:
+        inviter_id = result.get("inviter_id")
+        try:
+            await bot.send_message(
+                OWNER_ID,
+                f"⚠️ <b>АВТО-ЗАМОРОЗКА</b>\n\n"
+                f"User ID: <code>{inviter_id}</code>\n"
+                f"Достиг {REFERRAL_REVIEW_THRESHOLD} рефералов — заморожен и поставлен на проверку.\n\n"
+                f"/unfreeze {inviter_id} — разморозить",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            print(f"[WEBAPP PING] Ошибка уведомления владельца: {e}")
+
+    blocked = result.get("blocked_reason")
+    if blocked == "ip_limit":
+        print(f"[WEBAPP PING] IP-лимит: {ip} — реферал {telegram_id} не засчитан")
+    elif blocked == "daily_limit":
+        print(f"[WEBAPP PING] Дневной лимит инвайтера — реферал {telegram_id} не засчитан")
+
+    return {"ok": True, "counted": result.get("counted", False)}
 
 
 @app.get("/api/profile/{telegram_id}")
