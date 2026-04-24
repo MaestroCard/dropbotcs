@@ -121,7 +121,7 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int) -> d
         print(f"[WARNING] Самореферал {invited_telegram_id} — игнорируем")
         return {"success": False, "needs_review_notification": False, "referrals_count": 0}
 
-    from config import REFERRAL_REVIEW_THRESHOLD
+    from config import REFERRAL_REVIEW_THRESHOLD, DAILY_REFERRAL_LIMIT
 
     # Результаты, которые заполняются внутри транзакции
     result_success   = False
@@ -148,53 +148,73 @@ async def add_referral(referrer_telegram_id: int, invited_telegram_id: int) -> d
                 else:
                     print(f"[WARNING] Конфликт: {invited_telegram_id} уже имеет referrer {invited.referred_by}")
             else:
-                # Фиксируем связь для аудита
-                invited.referred_by = referrer_telegram_id
-                session.add(invited)
+                # Проверяем дневной лимит (только для незамороженных — заморозка
+                # всё равно не инкрементит основной счётчик, лимит не нужен)
+                if not inviter.is_frozen:
+                    today_start = datetime.datetime.utcnow().replace(
+                        hour=0, minute=0, second=0, microsecond=0
+                    )
+                    today_count = await session.scalar(
+                        select(func.count(User.id))
+                        .where(User.referred_by == referrer_telegram_id)
+                        .where(User.joined_at >= today_start)
+                    )
+                    if (today_count or 0) >= DAILY_REFERRAL_LIMIT:
+                        early_exit_reason = "daily_limit"
+                        print(f"[DAILY LIMIT] {referrer_telegram_id} — лимит {DAILY_REFERRAL_LIMIT}/сут достигнут")
 
-                if inviter.is_frozen:
-                    # Счётчик рефералов не трогаем, но фиксируем в frozen_referrals.
-                    # Оба объекта (inviter и invited) сохраняются в одной транзакции —
-                    # гарантированный коммит без зависимости от flush/referred_by.
-                    inviter.frozen_referrals = (inviter.frozen_referrals or 0) + 1
-                    session.add(inviter)
-                    early_exit_reason = "frozen"
-                    result_count = inviter.referrals
-                    print(f"[REFERRAL] {referrer_telegram_id} заморожен — "
-                          f"frozen_referrals={inviter.frozen_referrals}")
-                else:
-                    inviter.referrals += 1
+                if early_exit_reason is None:
+                    # Фиксируем связь для аудита
+                    invited.referred_by = referrer_telegram_id
+                    session.add(invited)
 
-                    # Авто-заморозка на каждом кратном пороге (50, 100, 150 ...)
-                    if (inviter.referrals % REFERRAL_REVIEW_THRESHOLD == 0
-                            and not inviter.needs_review):
-                        inviter.is_frozen    = True
-                        inviter.needs_review = True
-                        result_notify        = True
-                        print(f"[AUTO-FREEZE] {referrer_telegram_id} — {inviter.referrals} рефералов")
+                    if inviter.is_frozen:
+                        # Счётчик рефералов не трогаем, но фиксируем в frozen_referrals.
+                        inviter.frozen_referrals = (inviter.frozen_referrals or 0) + 1
+                        session.add(inviter)
+                        early_exit_reason = "frozen"
+                        result_count = inviter.referrals
+                        print(f"[REFERRAL] {referrer_telegram_id} заморожен — "
+                              f"frozen_referrals={inviter.frozen_referrals}")
+                    else:
+                        inviter.referrals += 1
 
-                    session.add(inviter)
-                    result_success = True
-                    result_count   = inviter.referrals
-                    print(f"[SUCCESS] {invited_telegram_id} → {referrer_telegram_id} (итого: {result_count})")
+                        # Авто-заморозка на каждом кратном пороге (50, 100, 150 ...)
+                        if (inviter.referrals % REFERRAL_REVIEW_THRESHOLD == 0
+                                and not inviter.needs_review):
+                            inviter.is_frozen    = True
+                            inviter.needs_review = True
+                            result_notify        = True
+                            print(f"[AUTO-FREEZE] {referrer_telegram_id} — {inviter.referrals} рефералов")
+
+                        session.add(inviter)
+                        result_success = True
+                        result_count   = inviter.referrals
+                        print(f"[SUCCESS] {invited_telegram_id} → {referrer_telegram_id} (итого: {result_count})")
 
         # Транзакция закрыта нормально — committed
 
     if early_exit_reason == "not_found":
         return {"success": False, "needs_review_notification": False,
-                "referrals_count": 0, "inviter_frozen": False}
+                "referrals_count": 0, "inviter_frozen": False, "daily_limit": False}
     if early_exit_reason == "already_referred":
         return {"success": False, "needs_review_notification": False,
-                "referrals_count": inviter.referrals if inviter else 0, "inviter_frozen": False}
+                "referrals_count": inviter.referrals if inviter else 0,
+                "inviter_frozen": False, "daily_limit": False}
+    if early_exit_reason == "daily_limit":
+        return {"success": False, "needs_review_notification": False,
+                "referrals_count": inviter.referrals if inviter else 0,
+                "inviter_frozen": False, "daily_limit": True}
     if early_exit_reason == "frozen":
         return {"success": False, "needs_review_notification": False,
-                "referrals_count": result_count, "inviter_frozen": True}
+                "referrals_count": result_count, "inviter_frozen": True, "daily_limit": False}
 
     return {
         "success":                   result_success,
         "needs_review_notification": result_notify,
         "referrals_count":           result_count,
         "inviter_frozen":            False,
+        "daily_limit":               False,
     }
 
 

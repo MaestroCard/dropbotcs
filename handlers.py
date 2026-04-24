@@ -94,8 +94,36 @@ async def start_handler(message: types.Message):
     if ref_id and is_new_user:
         try:
             print(f"[REFERRAL] Пытаемся добавить реферал {message.from_user.id} → от {ref_id}")
-            result = await add_referral(ref_id, message.from_user.id)
+
+            # ── Проверка качества аккаунта ─────────────────────────────
+            has_username = bool(message.from_user.username)
+            has_avatar   = False
+            if not has_username:
+                try:
+                    photos = await bot.get_user_profile_photos(message.from_user.id, limit=1)
+                    has_avatar = photos.total_count > 0
+                except Exception as e:
+                    print(f"[REFERRAL] Не удалось проверить аватарку {message.from_user.id}: {e}")
+                    has_avatar = True  # при ошибке API не блокируем
+
+            if not has_username and not has_avatar:
+                print(f"[REFERRAL] {message.from_user.id} — нет username и аватарки, реферал не засчитан")
+                await message.answer(
+                    "👋 Добро пожаловать!\n\n"
+                    "⚠️ К сожалению, реферал не засчитан пригласившему.\n"
+                    "Для участия в реферальной программе у вас должен быть "
+                    "установлен <b>username</b> или <b>аватарка</b> в Telegram.\n\n"
+                    "Установите их в настройках Telegram и попросите друга прислать ссылку повторно.",
+                    parse_mode="HTML",
+                )
+                result = None
+            else:
+                result = await add_referral(ref_id, message.from_user.id)
             print(f"[REFERRAL] add_referral вернул: {result}")
+
+            # Дневной лимит инвайтера исчерпан
+            if result and result.get("daily_limit"):
+                print(f"[REFERRAL] Дневной лимит инвайтера {ref_id} исчерпан")
 
             # Уведомление новому пользователю: инвайтер заморожен
             if result and result.get("inviter_frozen"):
@@ -600,6 +628,45 @@ async def review_list_command(message: types.Message):
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
+async def referral_faq_command(message: types.Message):
+    """FAQ по реферальной системе."""
+    from config import REFERRALS_FOR_GIFT, DAILY_REFERRAL_LIMIT
+    text = (
+        "❓ <b>Реферальная программа — вопросы и ответы</b>\n\n"
+
+        "📎 <b>Как получить реферальную ссылку?</b>\n"
+        "Нажмите «Профиль» в главном меню — там есть ваша личная ссылка вида "
+        "<code>t.me/QuestixMarketBot?start=ВАШID</code>\n\n"
+
+        "✅ <b>Когда реферал засчитывается?</b>\n"
+        f"Друг должен перейти по вашей ссылке и запустить бота. "
+        f"Реферал засчитывается сразу, если у друга есть <b>username</b> "
+        f"или <b>аватарка</b> в Telegram.\n\n"
+
+        "🎁 <b>Какой подарок я получу?</b>\n"
+        f"За каждого засчитанного реферала — случайный скин CS2. "
+        f"Кнопка «Забрать подарок» появится в чате автоматически.\n\n"
+
+        "⏱ <b>Есть ли лимиты?</b>\n"
+        f"Не более <b>{DAILY_REFERRAL_LIMIT} рефералов в сутки</b> (по UTC). "
+        f"Лимит сбрасывается в полночь.\n\n"
+
+        "❌ <b>Почему реферал мог не засчитаться?</b>\n"
+        "• У приглашённого нет username и аватарки\n"
+        "• Друг уже был зарегистрирован в боте ранее\n"
+        "• Исчерпан дневной лимит рефералов\n"
+        "• Ваш аккаунт временно заморожен (проходит проверку)\n\n"
+
+        "🔒 <b>Что такое заморозка?</b>\n"
+        "При большом количестве рефералов аккаунт автоматически "
+        "ставится на проверку. После одобрения все рефералы засчитываются "
+        "и подарки выдаются в обычном режиме.\n\n"
+
+        "📩 По другим вопросам — напишите в поддержку."
+    )
+    await message.answer(text, parse_mode="HTML")
+
+
 def register_handlers(dp: Dispatcher):
     dp.message.register(start_handler, Command(commands=['start']))
     dp.message.register(bind_steam, Command(commands=['bind']))
@@ -612,6 +679,7 @@ def register_handlers(dp: Dispatcher):
     dp.message.register(reset_gifts_command, Command(commands=['reset_gifts']))
     dp.message.register(stats_command, Command(commands=['stats']))
     dp.message.register(promo_gift_command, Command(commands=['promo_gift']))
+    dp.message.register(referral_faq_command, Command(commands=['faq', 'ref', 'referral']))
     dp.message.register(gifts_off_command, Command(commands=['gifts_off']))
     dp.message.register(gifts_on_command,  Command(commands=['gifts_on']))
     dp.message.register(freeze_command, Command(commands=['freeze']))

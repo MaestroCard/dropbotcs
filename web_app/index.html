@@ -304,6 +304,85 @@
             border: 3px solid #334155;
         }
 
+        /* ── FAQ Modal ─────────────────────────────────────────── */
+        #faq-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.7);
+            backdrop-filter: blur(6px);
+            z-index: 1000;
+            align-items: flex-end;
+            justify-content: center;
+        }
+        #faq-overlay.open {
+            display: flex;
+        }
+        #faq-modal {
+            background: #1e293b;
+            border-radius: 24px 24px 0 0;
+            padding: 24px 20px 36px;
+            width: 100%;
+            max-width: 600px;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: slideUp .3s ease;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to   { transform: translateY(0); }
+        }
+        #faq-modal h2 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #faq-modal h2 button {
+            background: #334155;
+            border: none;
+            color: #94a3b8;
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            font-size: 16px;
+            cursor: pointer;
+            line-height: 32px;
+            padding: 0;
+        }
+        .faq-item {
+            background: #0f172a;
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+        }
+        .faq-item .faq-q {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 6px;
+            color: #60a5fa;
+        }
+        .faq-item .faq-a {
+            font-size: 13px;
+            color: #94a3b8;
+            line-height: 1.55;
+        }
+        .faq-item .faq-a b { color: #e2e8f0; }
+        .btn-faq {
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 12px;
+            transition: background .2s;
+        }
+        .btn-faq:hover { background: #263347; }
+
         /* Стили для рулетки скинов */
         #case-roll {
             display: flex;
@@ -383,6 +462,7 @@
                 <span id="ref-link"></span>
             </div>
             <button class="btn" onclick="shareLink()" style="width: 100%">Поделиться ссылкой</button>
+            <button class="btn-faq" onclick="openFaq()">❓ Как работает реферальная программа?</button>
         </div>
 
         <!-- Анимация: бегущая лента скинов -->
@@ -454,6 +534,52 @@
         </div>
     </section>
 
+    <!-- ── FAQ Modal ──────────────────────────────────────────────── -->
+    <div id="faq-overlay" onclick="closeFaqOutside(event)">
+        <div id="faq-modal">
+            <h2>
+                ❓ Реферальная программа
+                <button onclick="closeFaq()">✕</button>
+            </h2>
+
+            <div class="faq-item">
+                <div class="faq-q">📎 Как получить реферальную ссылку?</div>
+                <div class="faq-a">Ваша личная ссылка указана прямо на этой странице. Скопируйте её или нажмите <b>«Поделиться ссылкой»</b> — откроется стандартное меню Telegram.</div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q">✅ Когда реферал засчитывается?</div>
+                <div class="faq-a">Друг должен перейти по вашей ссылке и запустить бота. Реферал засчитывается, если у него есть <b>username</b> или <b>аватарка</b> в Telegram — это защита от накрутки ботами.</div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q">🎁 Что я получу за реферала?</div>
+                <div class="faq-a">За каждого засчитанного реферала вы получаете <b>случайный скин CS2</b>. Кнопка «Забрать подарок 🎁» появится в чате с ботом автоматически.</div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q">⏱ Есть ли лимиты?</div>
+                <div class="faq-a">Не более <b>15 рефералов в сутки</b> (по UTC). Лимит сбрасывается автоматически в полночь.</div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q">❌ Почему реферал не засчитался?</div>
+                <div class="faq-a">
+                    Возможные причины:<br>
+                    • У приглашённого нет username и аватарки<br>
+                    • Друг уже был зарегистрирован в боте ранее<br>
+                    • Исчерпан дневной лимит (15/сут)<br>
+                    • Ваш аккаунт временно заморожен
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q">🔒 Что такое заморозка аккаунта?</div>
+                <div class="faq-a">При большом количестве рефералов за короткое время аккаунт ставится на ручную проверку. После одобрения все накопленные рефералы засчитываются и подарки выдаются.</div>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js?v=43"></script>
     <script>
         // Рандомизация позиций, задержек и длительности падающих скинов
@@ -468,6 +594,16 @@
                 skin.style.animationDelay = `${delay}s`;
                 skin.style.animationDuration = `${duration}s`;
             });
+        }
+
+        function openFaq() {
+            document.getElementById('faq-overlay').classList.add('open');
+        }
+        function closeFaq() {
+            document.getElementById('faq-overlay').classList.remove('open');
+        }
+        function closeFaqOutside(e) {
+            if (e.target === document.getElementById('faq-overlay')) closeFaq();
         }
 
         document.addEventListener('DOMContentLoaded', randomizeSkins);
