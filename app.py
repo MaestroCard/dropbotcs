@@ -24,6 +24,7 @@ from database import (
     get_users_for_review, get_all_referrers_paginated,
     get_referral_tree, get_referrals_per_day,
     admin_add_referral, admin_increment_referrals,
+    freeze_subtree,
 )
 from cache import cache
 from bot import dp  # dp из bot.py
@@ -294,6 +295,41 @@ async def admin_approve(telegram_id: int):
         "referrals_after":  result["referrals_after"],
         "restored":         restored,
         "gifts_sent":       gifts_sent,
+    }
+
+
+@app.post("/api/admin/freeze_subtree/{telegram_id}", dependencies=[Depends(require_admin)])
+async def admin_freeze_subtree(telegram_id: int, data: dict = Body(...)):
+    freeze = bool(data.get("freeze", True))
+    result = await freeze_subtree(telegram_id, freeze)
+
+    # Уведомляем пользователей (не более 30/сек, защита от flood control)
+    notified = 0
+    for i, uid in enumerate(result["ids"]):
+        try:
+            if freeze:
+                await bot.send_message(
+                    uid,
+                    "⚠️ Ваш реферальный аккаунт временно заморожен.\n"
+                    "Новые рефералы не будут засчитываться до окончания проверки.",
+                )
+            else:
+                await bot.send_message(
+                    uid,
+                    "✅ Ваш реферальный аккаунт разморожен!\n"
+                    "Новые рефералы снова засчитываются.",
+                )
+            notified += 1
+        except Exception as e:
+            print(f"[SUBTREE NOTIFY] {uid}: {e}")
+        if (i + 1) % 25 == 0:
+            await asyncio.sleep(1)
+
+    return {
+        "ok":       True,
+        "frozen":   freeze,
+        "affected": result["affected"],
+        "notified": notified,
     }
 
 

@@ -301,6 +301,54 @@ async def admin_increment_referrals(referrer_telegram_id: int, count: int = 1) -
             return {"ok": True, "reason": "ok", "referrals_count": inviter.referrals}
 
 
+async def freeze_subtree(root_telegram_id: int, freeze: bool = True) -> dict:
+    """
+    Заморозить / разморозить всех рефералов пользователя рекурсивно
+    (сам пользователь не затрагивается).
+    Возвращает {"ok": bool, "affected": int, "ids": list[int]}
+    """
+    sql_find = text("""
+        WITH RECURSIVE subtree AS (
+            SELECT telegram_id
+            FROM users
+            WHERE referred_by = :root_id
+
+            UNION ALL
+
+            SELECT u.telegram_id
+            FROM users u
+            INNER JOIN subtree s ON u.referred_by = s.telegram_id
+        )
+        SELECT telegram_id FROM subtree
+    """)
+
+    sql_update = text("""
+        WITH RECURSIVE subtree AS (
+            SELECT telegram_id
+            FROM users
+            WHERE referred_by = :root_id
+
+            UNION ALL
+
+            SELECT u.telegram_id
+            FROM users u
+            INNER JOIN subtree s ON u.referred_by = s.telegram_id
+        )
+        UPDATE users
+        SET is_frozen = :freeze
+        WHERE telegram_id IN (SELECT telegram_id FROM subtree)
+        RETURNING telegram_id
+    """)
+
+    async with engine.begin() as conn:
+        result = await conn.execute(sql_update, {"root_id": root_telegram_id, "freeze": freeze})
+        affected_ids = [row[0] for row in result.fetchall()]
+
+    action = "заморожено" if freeze else "разморожено"
+    print(f"[FREEZE SUBTREE] root={root_telegram_id} → {action} {len(affected_ids)} пользователей")
+    return {"ok": True, "affected": len(affected_ids), "ids": affected_ids}
+
+
 async def get_all_users() -> list[User]:
     async with async_session() as session:
         result = await session.execute(select(User))

@@ -337,6 +337,25 @@ async function toggleFreeze(id, freeze) {
   await loadReviewQueue();
 }
 
+async function freezeSubtree(id, freeze) {
+  const action = freeze ? 'заморозить' : 'разморозить';
+  if (!confirm(`Вы уверены? Это ${action} ВСЕХ рефералов пользователя ${id} рекурсивно (сам пользователь не затрагивается).`)) return;
+
+  showToast(`⏳ Выполняется заморозка ветки ${id}...`, 'success');
+  const res = await apiFetch(`/freeze_subtree/${id}`, {
+    method: 'POST',
+    body: JSON.stringify({ freeze }),
+  }).catch(e => { showToast('Ошибка: ' + e.message, 'error'); return null; });
+
+  if (!res) return;
+  showToast(
+    `❄️ Ветка ${id}: ${freeze ? 'заморожено' : 'разморожено'} ${res.affected} пользователей, уведомлено ${res.notified}`,
+    'success'
+  );
+  await loadUsers();
+  await loadReviewQueue();
+}
+
 // Sort
 function sortBy(col) {
   if (state.sortCol === col) {
@@ -564,8 +583,9 @@ async function showSidebar(id) {
   document.getElementById('sb-actions').innerHTML = `
     ${freezeBtn}
     ${approveBtn}
-    <button class="btn btn-ghost btn-sm" onclick="openTree(${id})">🌐 Дерево</button>
-    <button class="btn btn-ghost btn-sm" onclick="closeSidebar()">✕</button>
+    <button class="btn btn-warning btn-sm" onclick="freezeSubtree(${id}, true)"  title="Заморозить всех рефералов этого пользователя рекурсивно">❄️ Заморозить ветку</button>
+    <button class="btn btn-ghost   btn-sm" onclick="openTree(${id})">🌐 Дерево</button>
+    <button class="btn btn-ghost   btn-sm" onclick="closeSidebar()">✕</button>
   `;
 }
 
